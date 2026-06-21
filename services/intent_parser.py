@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from services.ai_client import AIClient, AIClientError
@@ -116,7 +117,6 @@ class IntentParser:
         intent = self._empty_intent()
 
         if any(w in lower for w in ["budget", "nzd", "nz$", "$", "dollar"]):
-            import re
             match = re.search(r'(\d+(?:\.\d+)?)', lower)
             if match:
                 intent["Budget"] = float(match.group(1))
@@ -135,11 +135,14 @@ class IntentParser:
         if any(w in lower for w in ["short shelf", "perishable", "avoid fresh", "no fresh", "long shelf"]):
             intent["ShelfLifePreference"] = "LONG"
 
-        if "avoid" in lower or "no " in lower:
-            for cat in ["fruit", "vegetable", "dairy", "frozen", "dry", "fresh"]:
-                if cat in lower:
+        exclude_patterns = ["avoid ", "exclude ", "no "]
+        for cat in ["fruit", "vegetable", "dairy", "frozen", "dry", "fresh"]:
+            for pattern in exclude_patterns:
+                if f"{pattern}{cat}" in lower:
                     intent["ExcludedCategory"] = cat.capitalize()
                     break
+            if intent["ExcludedCategory"]:
+                break
 
         if "prefer" in lower or "focus" in lower:
             for cat in ["fruit", "vegetable", "dairy", "frozen", "dry", "fresh"]:
