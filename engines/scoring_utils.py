@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 
+HIGH_STRENGTH_SCORE = 75
+
+
 def strength(score: float) -> str:
     """Map a 0-100 score to a recommendation strength label.
 
@@ -9,7 +12,7 @@ def strength(score: float) -> str:
     """
     if score >= 90:
         return "Very High"
-    if score >= 75:
+    if score >= HIGH_STRENGTH_SCORE:
         return "High"
     if score >= 60:
         return "Medium"

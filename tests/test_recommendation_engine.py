@@ -690,6 +690,30 @@ class RecommendationEngineTests(unittest.TestCase):
         result = RecommendationEngine._with_allocation_tier(candidate)
         self.assertNotEqual(result["action"], "Order Now")
 
+    def test_allocation_tier_missing_score_not_order_now(self) -> None:
+        candidate = {
+            "product": "No Score Item",
+            "product_id": "PZ",
+            "quantity": 1,
+            "unit": "KG",
+            "estimated_cost": 10.0,
+            "coverage_days": 10.0,
+            "priority": None,
+            "price_trend": None,
+        }
+        result = RecommendationEngine._with_allocation_tier(candidate)
+        self.assertNotEqual(result["action"], "Order Now")
+
+    def test_strength_high_threshold_equivalence(self) -> None:
+        from engines.scoring_utils import strength, HIGH_STRENGTH_SCORE
+        for score in [0, 39, 40, 59, 60, 74, 75, 89, 90, 100]:
+            is_high = strength(score) in {"Very High", "High"}
+            self.assertEqual(
+                is_high,
+                score >= HIGH_STRENGTH_SCORE,
+                f"strength({score})={strength(score)}, but score >= HIGH_STRENGTH_SCORE({HIGH_STRENGTH_SCORE}) is {score >= HIGH_STRENGTH_SCORE}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

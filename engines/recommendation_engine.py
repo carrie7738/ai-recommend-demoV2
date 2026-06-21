@@ -8,6 +8,7 @@ from engines.growth_engine import GrowthEngine
 from engines.price_trend_engine import PriceTrendEngine
 from engines.replenishment_engine import ReplenishmentEngine
 from engines.risk_engine import RiskEngine
+from engines.scoring_utils import HIGH_STRENGTH_SCORE
 from services.context_engine import ContextEngine
 
 
@@ -211,7 +212,7 @@ class RecommendationEngine:
         elif coverage_days is not None and coverage_days <= 3:
             tier = 1
             action = "Order Now"
-        elif candidate.get("score", 0) >= 75:
+        elif candidate.get("score", 0) >= HIGH_STRENGTH_SCORE:
             tier = 1
             action = "Order Now"
         elif price_signal == "Buy Now":
