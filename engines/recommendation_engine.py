@@ -204,7 +204,6 @@ class RecommendationEngine:
         price_signal = (candidate.get("price_trend") or {}).get("price_signal")
         priority = candidate.get("priority") or candidate.get("recommendation_strength")
         coverage_days = candidate.get("coverage_days")
-        strength = candidate.get("recommendation_strength", "")
 
         if priority == "Trial Buy":
             tier = 3
@@ -212,7 +211,7 @@ class RecommendationEngine:
         elif coverage_days is not None and coverage_days <= 3:
             tier = 1
             action = "Order Now"
-        elif strength in {"Very High", "High"}:
+        elif candidate.get("score", 0) >= 75:
             tier = 1
             action = "Order Now"
         elif price_signal == "Buy Now":

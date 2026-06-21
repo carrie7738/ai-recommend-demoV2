@@ -657,6 +657,39 @@ class RecommendationEngineTests(unittest.TestCase):
         self.assertEqual(result["overstock"], [])
         self.assertEqual(result["near_expiry"], [])
 
+    def test_allocation_tier_uses_score_for_order_now(self) -> None:
+        candidate = {
+            "product": "High Score Item",
+            "product_id": "PX",
+            "quantity": 1,
+            "unit": "KG",
+            "score": 80.0,
+            "recommendation_strength": "High",
+            "estimated_cost": 10.0,
+            "coverage_days": 10.0,
+            "priority": None,
+            "price_trend": None,
+        }
+        result = RecommendationEngine._with_allocation_tier(candidate)
+        self.assertEqual(result["allocation_tier"], 1)
+        self.assertEqual(result["action"], "Order Now")
+
+    def test_allocation_tier_score_below_75_not_order_now(self) -> None:
+        candidate = {
+            "product": "Medium Score Item",
+            "product_id": "PY",
+            "quantity": 1,
+            "unit": "KG",
+            "score": 65.0,
+            "recommendation_strength": "Medium",
+            "estimated_cost": 10.0,
+            "coverage_days": 10.0,
+            "priority": None,
+            "price_trend": None,
+        }
+        result = RecommendationEngine._with_allocation_tier(candidate)
+        self.assertNotEqual(result["action"], "Order Now")
+
 
 if __name__ == "__main__":
     unittest.main()

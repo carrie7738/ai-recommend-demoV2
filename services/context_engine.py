@@ -50,6 +50,12 @@ class ContextEngine:
         user_input: str,
         parsed_intent: dict[str, Any] | None = None,
     ) -> str:
+        """Pick the best-matching session from ConversationContext.
+
+        Kept even though the current demo has a single session (S1):
+        the matching logic supports multi-session workbooks for future demos
+        and is covered by test_context_engine_reuses_parsed_intent_for_session_matching.
+        """
         sessions = self.list_sessions(workbook)
         if not sessions:
             raise ValueError("ConversationContext data is required.")

@@ -1064,6 +1064,15 @@ def render_ai_understanding(context: dict[str, Any]) -> None:
 
 
 def _get_action_tag(strength: str, coverage_days: float | None) -> tuple[str, str]:
+    """Map recommendation strength + coverage to a UI display label and CSS class.
+
+    This produces a DIFFERENT vocabulary than engine `_with_allocation_tier`:
+    - UI: "Order Immediately" / "Order This Week" / "Monitor"
+    - Engine: "Order Now" / "Buy on Price Advantage" / "Trial Buy" / "Monitor Price" / "Order This Week"
+
+    The two vocabularies coexist for historical reasons. Unifying them requires
+    UI copy redesign and is tracked in the project roadmap.
+    """
     if strength in ("Very High", "High"):
         if coverage_days is not None and coverage_days <= 3:
             return "Order Immediately", "tag-immediate"
