@@ -635,6 +635,28 @@ class RecommendationEngineTests(unittest.TestCase):
         settings = Settings()
         self.assertEqual(settings.default_customer_name, "Auckland Central Supermarket")
 
+    def test_classify_risks_categorizes_correctly(self) -> None:
+        from services.ui import classify_risks
+        risks = [
+            {"product": "A", "risk_level": "Critical", "coverage_days": 1},
+            {"product": "B", "risk_level": "Low", "coverage_days": 45},
+            {"product": "C", "risk_level": "Medium", "coverage_days": 10},
+        ]
+        result = classify_risks(risks)
+        self.assertEqual([r["product"] for r in result["out_of_stock"]], ["A"])
+        self.assertEqual([r["product"] for r in result["overstock"]], ["B"])
+        self.assertEqual([r["product"] for r in result["near_expiry"]], ["C"])
+
+    def test_classify_risks_no_fallback_misplacement(self) -> None:
+        from services.ui import classify_risks
+        risks = [
+            {"product": "A", "risk_level": "Critical", "coverage_days": 1},
+            {"product": "B", "risk_level": "Low", "coverage_days": 5},
+        ]
+        result = classify_risks(risks)
+        self.assertEqual(result["overstock"], [])
+        self.assertEqual(result["near_expiry"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

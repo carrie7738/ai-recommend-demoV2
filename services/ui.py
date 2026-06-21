@@ -1146,17 +1146,31 @@ def render_growth_section(growth: list[dict[str, Any]]) -> None:
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 
+def classify_risks(risks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Classify risks into out_of_stock, overstock, and near_expiry categories.
+
+    No position-based fallback: if a category has no items, it stays empty.
+    """
+    out_of_stock = [r for r in risks if r.get("risk_level") in ("Critical", "High")]
+    overstock = [
+        r for r in risks
+        if r.get("coverage_days") is not None and r.get("coverage_days", 0) > 30
+    ]
+    near_expiry = [r for r in risks if r.get("risk_level") == "Medium"]
+    return {
+        "out_of_stock": out_of_stock,
+        "overstock": overstock,
+        "near_expiry": near_expiry,
+    }
+
+
 def render_risks_section(risks: list[dict[str, Any]]) -> None:
     st.markdown('<h2 class="section-heading" style="margin-top:1.5rem;">Inventory Risks</h2>', unsafe_allow_html=True)
 
-    out_of_stock = [r for r in risks if r.get("risk_level") in ("Critical", "High")]
-    overstock = [r for r in risks if r.get("coverage_days") is not None and r.get("coverage_days", 0) > 30]
-    near_expiry = [r for r in risks if r.get("risk_level") == "Medium"]
-
-    if not overstock:
-        overstock = risks[len(out_of_stock):len(out_of_stock)+3]
-    if not near_expiry:
-        near_expiry = risks[-3:]
+    classified = classify_risks(risks)
+    out_of_stock = classified["out_of_stock"]
+    overstock = classified["overstock"]
+    near_expiry = classified["near_expiry"]
 
     tab1, tab2, tab3 = st.tabs([
         f"Out of Stock Risk ({len(out_of_stock)})",
