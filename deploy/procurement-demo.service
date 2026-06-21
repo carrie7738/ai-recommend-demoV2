@@ -1,0 +1,20 @@
+[Unit]
+Description=AI Procurement Assistant Streamlit Demo
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/recommend-demo
+Environment="APP_TITLE=AI Smart Procurement Assistant"
+Environment="LOG_LEVEL=INFO"
+Environment="AI_ENABLED=true"
+Environment="DEEPSEEK_API_KEY=replace-with-your-deepseek-api-key"
+Environment="DEEPSEEK_BASE_URL=https://api.deepseek.com"
+Environment="DEEPSEEK_MODEL=deepseek-chat"
+Environment="EXCEL_FILE=/home/ubuntu/recommend-demo/data/AI_Demo_Data_Pack_V2_Large.xlsx"
+ExecStart=/home/ubuntu/recommend-demo/.venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
