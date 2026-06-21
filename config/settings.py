@@ -25,6 +25,7 @@ class Settings:
     app_title: str = "AI Smart Procurement Assistant"
     log_level: str = "INFO"
     excel_file: str = str(BASE_DIR / "data" / "AI_Demo_Data_Pack_V2_Large.xlsx")
+    default_customer_name: str = "Auckland Central Supermarket"
     ai: AISettings = field(default_factory=lambda: AISettings(
         api_key=os.getenv("DEEPSEEK_API_KEY", ""),
     ))
@@ -39,6 +40,7 @@ def get_settings() -> Settings:
             "EXCEL_FILE",
             str(BASE_DIR / "data" / "AI_Demo_Data_Pack_V2_Large.xlsx"),
         ),
+        default_customer_name=os.getenv("DEFAULT_CUSTOMER_NAME", "Auckland Central Supermarket"),
         ai=AISettings(
             enabled=os.getenv("AI_ENABLED", "true").lower() == "true",
             api_key=os.getenv("DEEPSEEK_API_KEY", ""),

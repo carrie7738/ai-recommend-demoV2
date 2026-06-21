@@ -630,6 +630,11 @@ class RecommendationEngineTests(unittest.TestCase):
         self.assertEqual(HIGH_SCORE_THRESHOLD, 60)
         self.assertEqual(MEDIUM_SCORE_THRESHOLD, 40)
 
+    def test_settings_provides_default_customer_name(self) -> None:
+        from config.settings import Settings
+        settings = Settings()
+        self.assertEqual(settings.default_customer_name, "Auckland Central Supermarket")
+
 
 if __name__ == "__main__":
     unittest.main()

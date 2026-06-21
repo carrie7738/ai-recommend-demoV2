@@ -7,6 +7,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from config.settings import get_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -890,7 +892,12 @@ def inject_theme() -> None:
     )
 
 
-def render_header(customer_name: str = "Auckland Central Supermarket", industry: str = "Retail - Grocery") -> None:
+def render_header(
+    customer_name: str | None = None,
+    industry: str = "Retail - Grocery",
+) -> None:
+    if customer_name is None:
+        customer_name = get_settings().default_customer_name
     from datetime import datetime
     now = datetime.now()
     html = (

@@ -48,7 +48,7 @@ def main() -> None:
 
     st.set_page_config(
         page_title="AI Smart Procurement Assistant",
-        page_icon="",
+        page_icon="🛒",
         layout="wide",
         initial_sidebar_state="collapsed",
     )
@@ -94,7 +94,7 @@ def main() -> None:
         context = result["context"]
 
         # 客户信息
-        customer_name = "Auckland Central Supermarket"
+        customer_name = settings.default_customer_name
         customer_df = workbook.get("Customer")
         if customer_df is not None and not customer_df.empty:
             customer_row = customer_df.loc[customer_df["CustomerId"] == context.get("CustomerId", "")]
