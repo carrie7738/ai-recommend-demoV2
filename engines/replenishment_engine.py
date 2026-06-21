@@ -8,6 +8,10 @@ import pandas as pd
 from engines.scoring_utils import strength
 
 
+HIGH_SCORE_THRESHOLD = 60
+MEDIUM_SCORE_THRESHOLD = 40
+
+
 @dataclass(frozen=True)
 class ReplenishmentWeights:
     frequency: float = 0.20
@@ -88,16 +92,14 @@ class ReplenishmentEngine:
 
         recommendations.sort(key=lambda item: (-item["score"], -item["quantity"], item["product"]))
 
-        # Filter by score threshold: try 60 first, fallback to 40 if no results
-        high_score = [r for r in recommendations if r["score"] >= 60]
+        high_score = [r for r in recommendations if r["score"] >= HIGH_SCORE_THRESHOLD]
         if high_score:
             return high_score[:limit]
-        
-        # Fallback: show medium-score products (40-60) when no high-score items
-        medium_score = [r for r in recommendations if r["score"] >= 40]
+
+        medium_score = [r for r in recommendations if r["score"] >= MEDIUM_SCORE_THRESHOLD]
         if medium_score:
             return medium_score[:limit]
-        
+
         return recommendations[:limit]
 
     def _score_product(

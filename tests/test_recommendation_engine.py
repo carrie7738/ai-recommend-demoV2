@@ -625,6 +625,11 @@ class RecommendationEngineTests(unittest.TestCase):
         with self.assertRaises(InsufficientDataError):
             RecommendationEngine().generate_session_recommendations(workbook, "S1")
 
+    def test_replenishment_engine_exposes_score_thresholds(self) -> None:
+        from engines.replenishment_engine import HIGH_SCORE_THRESHOLD, MEDIUM_SCORE_THRESHOLD
+        self.assertEqual(HIGH_SCORE_THRESHOLD, 60)
+        self.assertEqual(MEDIUM_SCORE_THRESHOLD, 40)
+
 
 if __name__ == "__main__":
     unittest.main()
