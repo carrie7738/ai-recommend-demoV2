@@ -49,6 +49,7 @@ class ContextEngine:
         workbook: dict[str, pd.DataFrame],
         user_input: str,
         parsed_intent: dict[str, Any] | None = None,
+        customer_id: str | None = None,
     ) -> str:
         """Pick the best-matching session from ConversationContext.
 
@@ -56,9 +57,9 @@ class ContextEngine:
         the matching logic supports multi-session workbooks for future demos
         and is covered by test_context_engine_reuses_parsed_intent_for_session_matching.
         """
-        sessions = self.list_sessions(workbook)
+        sessions = self.list_sessions(workbook, customer_id=customer_id)
         if not sessions:
-            raise ValueError("ConversationContext data is required.")
+            raise ValueError("No demo scenarios are available for the selected store.")
 
         if not user_input or not user_input.strip():
             return sessions[0]["SessionId"]

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import streamlit as st
 
 from config.settings import get_settings, setup_logging
@@ -5,15 +7,14 @@ from engines.recommendation_engine import RecommendationEngine, InsufficientData
 from services.excel_loader import ExcelLoader, ExcelLoaderError
 from services.context_engine import ContextEngine
 from services.intent_parser import IntentParser
+from services.store_resolver import StoreResolver
 from services.ui import (
     inject_theme,
     render_header,
     render_ai_request_section,
     render_ai_understanding,
     render_procurement_plan_report,
-    render_replenishment_section,
     render_growth_section,
-    render_risks_section,
 )
 
 
@@ -23,23 +24,29 @@ def get_excel_loader() -> ExcelLoader:
     return ExcelLoader(settings.excel_file)
 
 
-@st.cache_resource
 def get_recommendation_engine() -> RecommendationEngine:
     return RecommendationEngine()
 
 
-@st.cache_resource
 def get_context_engine() -> ContextEngine:
     return ContextEngine()
 
 
-@st.cache_resource
 def get_intent_parser() -> IntentParser:
     return IntentParser()
 
 
+def get_store_resolver() -> StoreResolver:
+    return StoreResolver()
+
+
 def get_workbook() -> dict:
     return get_excel_loader().load_workbook()
+
+
+def should_render_recommendations(has_user_request: bool, session_id: str | None) -> bool:
+    """Only generate demo recommendations after the user submits a valid request."""
+    return has_user_request and bool(session_id)
 
 
 def main() -> None:
@@ -59,17 +66,10 @@ def main() -> None:
         workbook = get_workbook()
         context_engine = get_context_engine()
         intent_parser = get_intent_parser()
-        engine = get_recommendation_engine()
-
-        sessions = context_engine.list_sessions(workbook)
-        if not sessions:
-            st.error("No conversation sessions found in the workbook.")
-            return
-
-        default_session_id = sessions[0]["SessionId"]
+        store_resolver = get_store_resolver()
 
         if "session_id" not in st.session_state:
-            st.session_state["session_id"] = default_session_id
+            st.session_state["session_id"] = None
 
         if "parsed_intent" not in st.session_state:
             st.session_state["parsed_intent"] = None
@@ -77,11 +77,43 @@ def main() -> None:
         if "has_user_request" not in st.session_state:
             st.session_state["has_user_request"] = False
 
-        # 获取当前会话的推荐结果
+        has_user_request = st.session_state["has_user_request"]
+
+        # The empty landing state deliberately contains no customer-specific data.
+        if not should_render_recommendations(has_user_request, st.session_state.get("session_id")):
+            render_header(show_context=False)
+            request, request_submitted = render_ai_request_section()
+            if request_submitted:
+                if not request.strip():
+                    st.warning("Please describe your procurement request before generating a plan.")
+                    return
+
+                store_resolution = store_resolver.resolve(workbook, request)
+                if not store_resolution.is_found:
+                    st.warning(store_resolution.message)
+                    return
+
+                store_context = store_resolver.build_store_context(
+                    workbook,
+                    store_resolution.customer_id,
+                )
+                parsed_intent = intent_parser.parse_intent(request, store_context=store_context)
+                st.session_state["parsed_intent"] = parsed_intent
+                st.session_state["has_user_request"] = True
+                st.session_state["session_id"] = context_engine.suggest_session(
+                    workbook,
+                    request,
+                    parsed_intent=parsed_intent,
+                    customer_id=store_resolution.customer_id,
+                )
+                st.rerun()
+            return
+
+        engine = get_recommendation_engine()
         session_id = st.session_state["session_id"]
         context_override = st.session_state.get("parsed_intent")
         clear_context_keys = set()
-        if st.session_state.get("has_user_request") and context_override:
+        if context_override:
             if context_override.get("Budget") is None:
                 clear_context_keys.add("Budget")
 
@@ -110,23 +142,32 @@ def main() -> None:
 
         render_header(customer_name, industry)
         request, request_submitted = render_ai_request_section()
-        if request_submitted and request.strip():
-            parsed_intent = intent_parser.parse_intent(request)
-            st.session_state["parsed_intent"] = parsed_intent
-            st.session_state["has_user_request"] = True
-            st.session_state["session_id"] = context_engine.suggest_session(
-                workbook,
-                request,
-                parsed_intent=parsed_intent,
-            )
-            st.rerun()
+        if request_submitted:
+            if not request.strip():
+                st.warning("Please describe your procurement request before generating a plan.")
+            else:
+                store_resolution = store_resolver.resolve(workbook, request)
+                if not store_resolution.is_found:
+                    st.warning(store_resolution.message)
+                else:
+                    store_context = store_resolver.build_store_context(
+                        workbook,
+                        store_resolution.customer_id,
+                    )
+                    parsed_intent = intent_parser.parse_intent(request, store_context=store_context)
+                    st.session_state["parsed_intent"] = parsed_intent
+                    st.session_state["session_id"] = context_engine.suggest_session(
+                        workbook,
+                        request,
+                        parsed_intent=parsed_intent,
+                        customer_id=store_resolution.customer_id,
+                    )
+                    st.rerun()
 
         render_ai_understanding(context)
         budget = float(context["Budget"]) if context.get("Budget") is not None else None
         render_procurement_plan_report(result["procurement_plan"], budget, context)
-        render_replenishment_section(result["replenishment"])
         render_growth_section(result["growth"])
-        render_risks_section(result["risks"])
 
     except ExcelLoaderError as exc:
         logger.exception("Failed to load workbook.")

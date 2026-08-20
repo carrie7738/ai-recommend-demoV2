@@ -493,6 +493,198 @@ class RecommendationEngineTests(unittest.TestCase):
         self.assertEqual(plan[0]["product_id"], "P1")
         self.assertEqual(plan[0]["action"], "Order Now")
 
+    def test_budget_plan_expands_portfolio_then_tops_up_safe_products(self) -> None:
+        core = {
+            "product": "Core Pasta",
+            "product_id": "P1",
+            "quantity": 10,
+            "unit": "KG",
+            "estimated_cost": 40.0,
+            "unit_cost": 4.0,
+            "recommendation_strength": "High",
+            "score": 80.0,
+            "coverage_days": 2.0,
+            "product_type": "Dry",
+            "historical_avg_qty": 10.0,
+            "price_trend": {"price_signal": "Fair Price"},
+        }
+        expansion = {
+            "product": "Expansion Rice",
+            "product_id": "P2",
+            "quantity": 10,
+            "unit": "KG",
+            "estimated_cost": 40.0,
+            "unit_cost": 4.0,
+            "recommendation_strength": "Medium",
+            "score": 50.0,
+            "coverage_days": 4.0,
+            "product_type": "Dry",
+            "historical_avg_qty": 10.0,
+            "price_trend": {"price_signal": "Fair Price"},
+        }
+        wait_candidate = {
+            "product": "Wait Product",
+            "product_id": "P3",
+            "quantity": 5,
+            "unit": "KG",
+            "estimated_cost": 10.0,
+            "unit_cost": 2.0,
+            "recommendation_strength": "High",
+            "score": 70.0,
+            "coverage_days": 20.0,
+            "product_type": "Dry",
+            "historical_avg_qty": 5.0,
+            "price_trend": {"price_signal": "Wait"},
+        }
+
+        plan, remaining = RecommendationEngine._build_procurement_plan(
+            replenishment=[core],
+            growth=[],
+            budget=100.0,
+            replenishment_candidates=[core, expansion, wait_candidate],
+        )
+
+        by_product = {item["product_id"]: item for item in plan}
+        total = sum(item["estimated_cost"] for item in plan)
+        self.assertGreaterEqual(total, 85.0)
+        self.assertLessEqual(total, 95.0)
+        self.assertEqual(by_product["P2"]["budget_allocation"], "Portfolio Expansion")
+        self.assertEqual(by_product["P1"]["budget_allocation"], "Budget Top-up")
+        self.assertLessEqual(by_product["P1"]["quantity"], 15)
+        self.assertNotIn("P3", by_product)
+        self.assertLessEqual(remaining, 15.0)
+
+    def test_budget_top_up_does_not_increase_fresh_or_trial_quantities(self) -> None:
+        fresh = {
+            "product": "Fresh Banana",
+            "product_id": "P1",
+            "quantity": 10,
+            "unit": "KG",
+            "estimated_cost": 40.0,
+            "unit_cost": 4.0,
+            "recommendation_strength": "High",
+            "score": 80.0,
+            "coverage_days": 2.0,
+            "product_type": "Fresh",
+            "historical_avg_qty": 10.0,
+            "price_trend": {"price_signal": "Fair Price"},
+        }
+        trial = {
+            "product": "Trial Product",
+            "product_id": "P2",
+            "quantity": 4,
+            "unit": "KG",
+            "estimated_cost": 12.0,
+            "unit_cost": 3.0,
+            "priority": "Trial Buy",
+            "recommendation_strength": "High",
+            "score": 80.0,
+            "product_type": "Dry",
+            "historical_avg_qty": 4.0,
+            "price_trend": {"price_signal": "Fair Price"},
+        }
+
+        plan, _ = RecommendationEngine._build_procurement_plan(
+            replenishment=[fresh],
+            growth=[trial],
+            budget=100.0,
+        )
+
+        by_product = {item["product_id"]: item for item in plan}
+        self.assertEqual(by_product["P1"]["quantity"], 10)
+        self.assertEqual(by_product["P2"]["quantity"], 4)
+
+    def test_budget_utilization_marks_held_when_safe_candidates_are_insufficient(self) -> None:
+        summary = RecommendationEngine._budget_utilization_summary(
+            [{"estimated_cost": 40.0}],
+            budget=100.0,
+        )
+
+        self.assertTrue(summary["is_held"])
+        self.assertFalse(summary["is_optimized"])
+
+    def test_why_selected_includes_budget_expansion_when_plan_is_long(self) -> None:
+        from services.ui import _select_why_selected_items
+
+        plan = [
+            {"product_id": f"P{index}", "budget_allocation": "Core Replenishment"}
+            for index in range(1, 6)
+        ] + [{"product_id": "P6", "budget_allocation": "Portfolio Expansion"}]
+
+        selected = _select_why_selected_items(plan)
+        self.assertEqual(len(selected), 6)
+        self.assertIn("P6", [item["product_id"] for item in selected])
+
+    def test_store_level_adjusts_quantity_and_recalculates_cost(self) -> None:
+        recommendations = [{
+            "product": "Banana",
+            "product_id": "P1",
+            "quantity": 10,
+            "estimated_cost": 50.0,
+            "unit_cost": 5.0,
+        }]
+
+        bronze = RecommendationEngine._apply_store_adjustments(
+            recommendations,
+            {"StoreLevel": "Bronze", "CustomerStage": "Mature"},
+        )[0]
+        platinum = RecommendationEngine._apply_store_adjustments(
+            recommendations,
+            {"StoreLevel": "Platinum", "CustomerStage": "Mature"},
+        )[0]
+
+        self.assertEqual(bronze["quantity"], 9)
+        self.assertEqual(bronze["estimated_cost"], 45.0)
+        self.assertEqual(platinum["quantity"], 12)
+        self.assertEqual(platinum["estimated_cost"], 60.0)
+
+    def test_new_store_only_reduces_trial_buy_quantity(self) -> None:
+        recommendations = [
+            {
+                "product": "Trial Product",
+                "product_id": "P2",
+                "quantity": 5,
+                "estimated_cost": 25.0,
+                "unit_cost": 5.0,
+                "priority": "Trial Buy",
+            },
+            {
+                "product": "Refill Product",
+                "product_id": "P1",
+                "quantity": 5,
+                "estimated_cost": 25.0,
+                "unit_cost": 5.0,
+            },
+        ]
+
+        adjusted = RecommendationEngine._apply_store_adjustments(
+            recommendations,
+            {"StoreLevel": "Silver", "CustomerStage": "New"},
+        )
+
+        self.assertEqual(adjusted[0]["quantity"], 3)
+        self.assertEqual(adjusted[0]["store_adjustment"]["trial_factor"], 0.60)
+        self.assertEqual(adjusted[1]["quantity"], 5)
+        self.assertEqual(adjusted[1]["store_adjustment"]["trial_factor"], 1.0)
+
+    def test_budget_allocation_remains_compliant_after_store_adjustment(self) -> None:
+        adjusted = RecommendationEngine._apply_store_adjustments(
+            [{
+                "product": "Banana",
+                "product_id": "P1",
+                "quantity": 10,
+                "estimated_cost": 50.0,
+                "unit_cost": 5.0,
+                "recommendation_strength": "High",
+                "score": 80.0,
+                "coverage_days": 2.0,
+            }],
+            {"StoreLevel": "Platinum", "CustomerStage": "Mature"},
+        )
+
+        plan, _ = RecommendationEngine._build_procurement_plan(adjusted, [], budget=25.0)
+        self.assertLessEqual(sum(item["estimated_cost"] for item in plan), 25.0)
+
     def test_intent_parser_fallback_extracts_nzd_budget(self) -> None:
         parser = IntentParser(ai_client=OfflineAIClient())
         intent = parser.parse_intent(
@@ -617,6 +809,22 @@ class RecommendationEngineTests(unittest.TestCase):
 
         self.assertEqual(session_id, "S1")
         self.assertEqual(parser.calls, 1)
+
+    def test_context_engine_limits_session_matching_to_selected_store(self) -> None:
+        workbook = dict(self.workbook)
+        workbook["ConversationContext"] = pd.DataFrame([
+            {"SessionId": "S1", "CustomerId": "C1", "PromotionFlag": False},
+            {"SessionId": "S2", "CustomerId": "C2", "PromotionFlag": False},
+        ])
+
+        session_id = ContextEngine().suggest_session(
+            workbook,
+            "routine order",
+            parsed_intent={"PromotionFlag": False},
+            customer_id="C2",
+        )
+
+        self.assertEqual(session_id, "S2")
 
     def test_missing_order_history_raises_insufficient_data(self) -> None:
         workbook = dict(self.workbook)

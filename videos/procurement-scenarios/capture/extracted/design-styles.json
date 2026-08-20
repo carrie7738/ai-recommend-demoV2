@@ -1,0 +1,100 @@
+{
+  "typography": [
+    {
+      "role": "display",
+      "fontFamily": "Source Sans",
+      "fontSize": "20px",
+      "fontWeight": "700",
+      "lineHeight": "24px",
+      "letterSpacing": "normal",
+      "color": "#1A1A2E",
+      "sampleText": "AI Smart Procurement Assistant"
+    },
+    {
+      "role": "body",
+      "fontFamily": "Source Sans",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "lineHeight": "25.6px",
+      "letterSpacing": "normal",
+      "color": "#FFFFFF",
+      "sampleText": "Generate procurement plan"
+    },
+    {
+      "role": "body-small",
+      "fontFamily": "Source Sans",
+      "fontSize": "13.12px",
+      "fontWeight": "400",
+      "lineHeight": "20.992px",
+      "letterSpacing": "normal",
+      "color": "#6C757D",
+      "sampleText": "Include your store name or ID, then describe demand, budget,"
+    }
+  ],
+  "spacing": {
+    "observed": [
+      2,
+      8,
+      10,
+      12,
+      15,
+      16,
+      24
+    ],
+    "baseUnit": 8
+  },
+  "radius": [
+    "8px"
+  ],
+  "shadows": [],
+  "buttons": [
+    {
+      "label": "Deploy",
+      "background": "transparent",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#31333F",
+      "padding": "0px 8px",
+      "borderRadius": "8px",
+      "border": "0px none rgb(49, 51, 63)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "28px"
+    },
+    {
+      "label": "Generate procurement plan",
+      "background": "#FF4B4B",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#FFFFFF",
+      "padding": "4px 12px",
+      "borderRadius": "8px",
+      "border": "1px solid rgb(255, 75, 75)",
+      "boxShadow": "none",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "height": "40px"
+    }
+  ],
+  "cards": [],
+  "nav": {
+    "label": "navigation",
+    "background": "transparent",
+    "backgroundImage": "",
+    "backdropFilter": "",
+    "color": "#31333F",
+    "padding": "0px",
+    "borderRadius": "0px",
+    "border": "0px none rgb(49, 51, 63)",
+    "boxShadow": "none",
+    "fontSize": "14px",
+    "fontWeight": "400",
+    "height": "60px"
+  },
+  "chips": [],
+  "statCells": [],
+  "tabs": [],
+  "backgrounds": [],
+  "glass": []
+}

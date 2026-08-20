@@ -1,0 +1,18 @@
+#!/bin/sh
+# HyperFrames probes an internal placeholder even when a composition has no video assets.
+printf '%s\n' "$*" >> /private/tmp/procurement-ffprobe-args.log
+for arg in "$@"; do
+  if [ "$arg" = "input" ]; then
+    printf '%s\n' '{"streams":[],"format":{}}'
+    exit 0
+  fi
+done
+
+case "$*" in
+  *.png)
+    printf '%s\n' '{"streams":[{"codec_type":"video","codec_name":"png","width":1280,"height":720,"r_frame_rate":"25/1","avg_frame_rate":"0/0","pix_fmt":"rgba"}],"format":{"format_name":"png_pipe","duration":"0"}}'
+    exit 0
+    ;;
+esac
+
+exec "/Applications/TRAE SOLO.app/Contents/Resources/app/bin/ffprobe" "$@"

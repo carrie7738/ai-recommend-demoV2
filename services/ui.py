@@ -36,8 +36,8 @@ def inject_theme() -> None:
         }
 
         .block-container {
-            padding-top: 1.5rem;
-            padding-bottom: 2rem;
+            padding-top: 2rem;
+            padding-bottom: 3rem;
             max-width: 1120px;
         }
 
@@ -105,10 +105,10 @@ def inject_theme() -> None:
         /* Section card */
         .section-card {
             background: #fff;
-            border: 1px solid #e9ecef;
-            border-radius: 12px;
-            padding: 1.25rem 1.5rem;
-            margin-bottom: 1.25rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 1.35rem 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .section-card-header {
@@ -262,7 +262,7 @@ def inject_theme() -> None:
 
         .understanding-card {
             border-color: #dbeafe;
-            box-shadow: 0 10px 30px rgba(37, 99, 235, 0.06);
+            background: #fbfdff;
         }
 
         .understanding-grid {
@@ -272,10 +272,10 @@ def inject_theme() -> None:
         }
 
         .understanding-panel {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 0.9rem 1rem;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 0.85rem 0.95rem;
         }
 
         .understanding-panel-title {
@@ -365,9 +365,9 @@ def inject_theme() -> None:
 
         .replenishment-card {
             background: #fff;
-            border: 1px solid #e9ecef;
-            border-radius: 12px;
-            padding: 1rem 1.25rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.9rem 1.1rem;
             transition: box-shadow 0.15s ease;
         }
 
@@ -458,9 +458,9 @@ def inject_theme() -> None:
 
         .growth-card {
             background: #fff;
-            border: 1px solid #e9ecef;
-            border-radius: 12px;
-            padding: 1rem 1.25rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 0.8rem 1rem;
         }
 
         .growth-card-top {
@@ -662,15 +662,16 @@ def inject_theme() -> None:
 
         .procurement-table th {
             text-align: left;
-            padding: 0.6rem 0.75rem;
-            font-weight: 600;
-            color: #6c757d;
+            padding: 0.75rem 0.8rem;
+            font-weight: 700;
+            color: #475569;
             font-size: 0.78rem;
-            border-bottom: 1px solid #e9ecef;
+            background: #f8fafc;
+            border-bottom: 1px solid #cbd5e1;
         }
 
         .procurement-table td {
-            padding: 0.6rem 0.75rem;
+            padding: 0.78rem 0.8rem;
             border-bottom: 1px solid #f1f3f5;
             color: #1a1a2e;
         }
@@ -696,8 +697,9 @@ def inject_theme() -> None:
         }
 
         .procurement-report {
-            border: 1px solid #d8e6e2;
-            box-shadow: 0 18px 45px rgba(15, 118, 110, 0.08);
+            border: 1px solid #99f6e4;
+            box-shadow: 0 20px 50px rgba(15, 118, 110, 0.10);
+            margin-top: 0.5rem;
         }
 
         .procurement-summary-header {
@@ -709,7 +711,7 @@ def inject_theme() -> None:
         }
 
         .procurement-summary-title {
-            font-size: 1.12rem;
+            font-size: 1.25rem;
             font-weight: 800;
             color: #102a43;
             margin-bottom: 0.25rem;
@@ -747,14 +749,14 @@ def inject_theme() -> None:
         }
 
         .procurement-summary-metric {
-            background: #f8fafc;
+            background: #fff;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             padding: 0.9rem 1rem;
         }
 
         .procurement-summary-metric.primary {
-            background: linear-gradient(135deg, #ecfdf5, #f8fafc);
+            background: #f0fdfa;
             border-color: #99f6e4;
         }
 
@@ -876,10 +878,11 @@ def inject_theme() -> None:
 
         /* Section heading */
         .section-heading {
-            font-size: 1.05rem;
-            font-weight: 700;
-            color: #1a1a2e;
-            margin-bottom: 1rem;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 2.5rem 0 0.85rem;
+            letter-spacing: -0.01em;
         }
 
         /* Hide sidebar nav */
@@ -895,25 +898,36 @@ def inject_theme() -> None:
 def render_header(
     customer_name: str | None = None,
     industry: str = "Retail - Grocery",
+    show_context: bool = True,
 ) -> None:
-    if customer_name is None:
+    if customer_name is None and show_context:
         customer_name = get_settings().default_customer_name
     from datetime import datetime
+
     now = datetime.now()
+    context_html = ""
+    analysis_html = ""
+    if show_context:
+        context_html = (
+            '<div class="app-header-meta">'
+            f'<span>🏪 {escape(customer_name or "")}</span>'
+            '<span class="dot"></span>'
+            f'<span> {escape(industry)}</span>'
+            '</div>'
+        )
+        analysis_html = (
+            '<div class="app-header-right">'
+            '<div class="analysis-label">📋 Analysis Time</div>'
+            f'<div class="analysis-time">{now.strftime("%B %d, %Y")} · {now.strftime("%H:%M")}</div>'
+            '</div>'
+        )
     html = (
         '<div class="app-header">'
         '<div class="app-header-left">'
         f'<h1>AI Smart Procurement Assistant</h1>'
-        '<div class="app-header-meta">'
-        f'<span>🏪 {escape(customer_name)}</span>'
-        '<span class="dot"></span>'
-        f'<span> {escape(industry)}</span>'
+        f'{context_html}'
         '</div>'
-        '</div>'
-        '<div class="app-header-right">'
-        '<div class="analysis-label">📋 Analysis Time</div>'
-        f'<div class="analysis-time">{now.strftime("%B %d, %Y")} · {now.strftime("%H:%M")}</div>'
-        '</div>'
+        f'{analysis_html}'
         '</div>'
     )
     st.markdown(html, unsafe_allow_html=True)
@@ -929,7 +943,7 @@ def render_ai_request_section() -> tuple[str, bool]:
         '<div class="section-icon section-icon-purple">✦</div>'
         '<div>'
         '<div class="section-title">AI Procurement Request</div>'
-        '<div class="section-subtitle">Describe your needs in natural language</div>'
+        '<div class="section-subtitle">Include your store name or ID, then describe demand, budget, promotion, or shelf-life needs.</div>'
         '</div>'
         '</div>',
         unsafe_allow_html=True,
@@ -937,10 +951,7 @@ def render_ai_request_section() -> tuple[str, bool]:
     with st.form("ai_procurement_request_form"):
         request = st.text_area(
             "Request",
-            value=st.session_state.get(
-                "ai_request",
-                "Traffic is expected to increase next week. Budget is NZD 1000. Avoid short shelf-life products.",
-            ),
+            value=st.session_state.get("ai_request", ""),
             key="ai_request",
             height=90,
             label_visibility="collapsed",
@@ -971,6 +982,19 @@ def render_ai_understanding(context: dict[str, Any]) -> None:
     uncertainty = context.get("Uncertainty") or {}
     missing_information = context.get("MissingInformation") or []
     readiness = context.get("RecommendationReadiness") or {}
+    analysis_status = context.get("AIAnalysisStatus")
+    analysis_source = str(context.get("AIAnalysisSource") or "Rules fallback")
+    store_context = context.get("StoreContext") or {}
+    store_considerations = context.get("StoreConsiderations") or []
+
+    if analysis_status == "live":
+        analysis_badge = "DeepSeek Semantic Analysis"
+        analysis_badge_class = "pill-purple"
+        analysis_subtitle = "DeepSeek translated this request into procurement intent, decision signals, and confidence."
+    else:
+        analysis_badge = "Rules Fallback"
+        analysis_badge_class = "pill-amber"
+        analysis_subtitle = "DeepSeek analysis is unavailable for this request; local rules produced the interpretation."
 
     primary_intent = _titleize_signal(business_intent.get("PrimaryIntent", "general_planning"))
     urgency = _titleize_signal(business_intent.get("Urgency", "medium"))
@@ -1006,12 +1030,13 @@ def render_ai_understanding(context: dict[str, Any]) -> None:
             '</div>'
         )
 
-    follow_up = readiness.get("FollowUpQuestion") if readiness.get("ShouldAskFollowUp") else ""
+    high_risk_missing = any(item.get("Importance") == "high_risk" for item in missing_information)
+    follow_up = readiness.get("FollowUpQuestion") if (readiness.get("ShouldAskFollowUp") or high_risk_missing) else ""
     follow_up_html = ""
     if follow_up:
         follow_up_html = (
             '<div class="understanding-follow-up">'
-            f'<strong>Suggested follow-up:</strong> {escape(str(follow_up))}'
+            f'<strong>Input needed:</strong> {escape(str(follow_up))}'
             '</div>'
         )
 
@@ -1021,43 +1046,61 @@ def render_ai_understanding(context: dict[str, Any]) -> None:
         for key, value in field_sources.items()
         if key in {"budget", "traffic_level", "promotion_flag", "shelf_life_preference"}
     )
+    store_summary = " · ".join(
+        value for value in [
+            store_context.get("StoreName"),
+            store_context.get("Industry"),
+            store_context.get("Region"),
+            store_context.get("StoreLevel"),
+            store_context.get("CustomerStage"),
+        ] if value
+    )
+    store_consideration_html = "".join(
+        f'<div class="understanding-mini-row"><span class="understanding-mini-value">{escape(str(item))}</span></div>'
+        for item in store_considerations[:3]
+    )
+    if not store_consideration_html:
+        store_consideration_html = (
+            '<div class="understanding-mini-row">'
+            '<span class="understanding-mini-value">Store profile is applied to recommendation quantities.</span>'
+            '</div>'
+        )
 
     st.markdown(
         '<div class="section-card understanding-card">'
         '<div class="section-card-header">'
         '<div class="section-icon section-icon-blue">AI</div>'
         '<div>'
-        '<div class="section-title">AI Understanding</div>'
-        '<div class="section-subtitle">Procurement consultant view of the request</div>'
+        '<div class="section-title">AI Decision Brief</div>'
+        '<div class="section-subtitle">What matters for this purchase decision.</div>'
         '</div>'
+        '</div>'
+        '<div class="understanding-pills">'
+        f'<span class="understanding-pill {analysis_badge_class}">✦ {escape(analysis_badge)}</span>'
         '</div>'
         '<div class="understanding-grid">'
         '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Business Intent</div>'
+        '<div class="understanding-panel-title">Procurement Intent</div>'
         f'<div class="understanding-primary">{escape(primary_intent)}</div>'
-        f'<div class="understanding-secondary">Urgency: {escape(urgency)} · Decision: {escape(decision_type)}</div>'
+        '<div class="understanding-secondary">Primary purchase objective</div>'
         '</div>'
         '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Decision Signals</div>'
+        '<div class="understanding-panel-title">Demand Signal</div>'
         f'<div class="understanding-primary">{escape(_titleize_signal(decision_signals.get("ExpectedDemandChange", "unknown")))} Demand</div>'
-        f'<div class="understanding-secondary">Driver: {escape(_titleize_signal(decision_signals.get("DemandDriver", "unknown")))} · {escape(budget_mode)}</div>'
+        f'<div class="understanding-secondary">Driver: {escape(_titleize_signal(decision_signals.get("DemandDriver", "unknown")))}</div>'
         '</div>'
         '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Risk Sensitivity</div>'
-        f'<div class="understanding-primary">Stockout {escape(_titleize_signal(decision_signals.get("StockoutSensitivity", "medium")))}</div>'
-        f'<div class="understanding-secondary">Waste: {escape(_titleize_signal(decision_signals.get("WasteSensitivity", "medium")))} · Price: {escape(_titleize_signal(decision_signals.get("PriceSensitivity", "medium")))}</div>'
+        '<div class="understanding-panel-title">Key Constraint</div>'
+        f'<div class="understanding-primary">{escape(budget_mode)}</div>'
+        f'<div class="understanding-secondary">{escape("Long shelf-life" if context.get("ShelfLifePreference") == "LONG" else "Applied to the final purchase plan")}</div>'
         '</div>'
         '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Recommendation Confidence</div>'
+        '<div class="understanding-panel-title">Confidence</div>'
         f'<div class="understanding-primary"><span class="understanding-pill {_confidence_class(str(readiness.get("ConfidenceLevel", "medium")))}">{escape(confidence_display)}</span></div>'
-        f'<div class="understanding-secondary">{escape(source_summary)}</div>'
+        '<div class="understanding-secondary">Ready for recommendation</div>'
         '</div>'
         '</div>'
-        '<div class="understanding-missing">'
-        '<div class="understanding-panel-title">Missing Information</div>'
-        f'{"".join(missing_items)}'
         f'{follow_up_html}'
-        '</div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -1081,7 +1124,7 @@ def _get_action_tag(strength: str, coverage_days: float | None) -> tuple[str, st
 
 
 def render_replenishment_section(replenishment: list[dict[str, Any]]) -> None:
-    st.markdown('<h2 class="section-heading">Recommended Replenishment</h2>', unsafe_allow_html=True)
+    st.markdown('<h2 class="section-heading">Top 3 Immediate Actions</h2>', unsafe_allow_html=True)
 
     if not replenishment:
         st.markdown(
@@ -1093,7 +1136,7 @@ def render_replenishment_section(replenishment: list[dict[str, Any]]) -> None:
         return
 
     html_parts = ['<div class="replenishment-list">']
-    for item in replenishment[:8]:
+    for item in replenishment[:3]:
         action_label, action_class = _get_action_tag(item.get("recommendation_strength", ""), item.get("coverage_days"))
         coverage = item.get("coverage_days")
         coverage_display = f"{coverage:.0f} Days" if coverage is not None else "N/A"
@@ -1136,7 +1179,7 @@ def render_growth_section(growth: list[dict[str, Any]]) -> None:
         return
 
     html_parts = ['<div class="growth-list">']
-    for item in growth[:6]:
+    for item in growth[:3]:
         strength = item.get("recommendation_strength", "Low")
         potential_class = f"potential-{strength.lower().replace(' ', '-')}"
         potential_label = f"{strength} Potential"
@@ -1248,16 +1291,30 @@ def render_procurement_plan_report(
     total_investment = sum(float(item.get("estimated_cost", 0)) for item in plan)
     has_budget = budget is not None
     remaining = max(budget - total_investment, 0) if has_budget else None
-    is_optimized = has_budget and total_investment > 0 and remaining / max(budget, 1) <= 0.2
+    budget_utilization = context.get("BudgetUtilization") or {}
+    is_optimized = bool(budget_utilization.get("is_optimized"))
+    is_held = bool(budget_utilization.get("is_held"))
     budget_display = f"NZD {budget:.0f}" if has_budget else "No constraint"
     remaining_display = f"NZD {remaining:.0f}" if remaining is not None else "Not constrained"
     status_primary = "Within Budget" if has_budget else "No Budget Constraint"
-    status_secondary = "Budget Optimized" if is_optimized else ("Budget Protected" if has_budget else "Priority Ranked")
-    notes = (
-        "This plan prioritizes high-demand products while remaining within budget and reducing stockout risk."
-        if has_budget
-        else "This plan prioritizes high-demand products without applying a budget constraint."
+    status_secondary = (
+        "Budget Optimized" if is_optimized
+        else "Budget Held" if is_held
+        else "Demand Covered" if has_budget
+        else "Priority Ranked"
     )
+    store_context = context.get("StoreContext") or {}
+    store_level = str(store_context.get("StoreLevel") or "")
+    customer_stage = str(store_context.get("CustomerStage") or "")
+    store_note = f" for the {store_level} {customer_stage} store profile" if store_level and customer_stage else ""
+    if is_held:
+        notes = (
+            f"This plan protects the remaining budget because no further products meet the inventory, shelf-life, and price safeguards{store_note}."
+        )
+    elif has_budget:
+        notes = f"This plan prioritizes high-demand products{store_note} while remaining within budget and reducing stockout risk."
+    else:
+        notes = f"This plan prioritizes high-demand products{store_note} without applying a budget constraint."
 
     html_parts = ['<div class="section-card procurement-report">']
 
@@ -1282,7 +1339,7 @@ def render_procurement_plan_report(
 
     if plan:
         table_rows = ""
-        for item in plan[:8]:
+        for item in plan[:10]:
             table_rows += (
                 f'<tr>'
                 f'<td>{escape(item["product"])}</td>'
@@ -1303,7 +1360,8 @@ def render_procurement_plan_report(
         )
 
         html_parts.append('<div class="procurement-subheading">Why Selected</div><div class="why-selected-grid">')
-        for item in plan[:6]:
+        why_selected_items = _select_why_selected_items(plan)
+        for item in why_selected_items:
             reasons = _procurement_reasons(item, context)
             reason_items = "".join(f'<li>{escape(reason)}</li>' for reason in reasons[:3])
             html_parts.append(
@@ -1329,8 +1387,35 @@ def render_procurement_plan_report(
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 
+def _select_why_selected_items(plan: list[dict[str, Any]], limit: int = 6) -> list[dict[str, Any]]:
+    """Keep the report concise while surfacing at least one budget-expansion decision."""
+    selected = list(plan[:4])
+    selected_ids = {item.get("product_id") for item in selected}
+    for item in plan:
+        if item.get("budget_allocation") == "Core Replenishment" or item.get("product_id") in selected_ids:
+            continue
+        selected.append(item)
+        selected_ids.add(item.get("product_id"))
+        if len(selected) >= limit:
+            return selected
+    for item in plan:
+        if item.get("product_id") in selected_ids:
+            continue
+        selected.append(item)
+        selected_ids.add(item.get("product_id"))
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def _procurement_reasons(item: dict[str, Any], context: dict[str, Any]) -> list[str]:
     business_reasons: list[str] = []
+
+    allocation = item.get("budget_allocation")
+    if allocation == "Portfolio Expansion":
+        business_reasons.append("Added to broaden the purchase mix while meeting the budget target.")
+    elif allocation == "Budget Top-up":
+        business_reasons.append("Quantity increased within safe holding limits to improve budget utilization.")
 
     action = item.get("action")
     if action:
@@ -1356,6 +1441,10 @@ def _procurement_reasons(item: dict[str, Any], context: dict[str, Any]) -> list[
 
     if item.get("priority") == "Trial Buy":
         business_reasons.append("Small trial quantity limits risk while testing a growth opportunity.")
+
+    store_adjustment = item.get("store_adjustment") or {}
+    if store_adjustment.get("reason"):
+        business_reasons.append(str(store_adjustment["reason"]))
 
     if context.get("TrafficLevel") == "HIGH":
         business_reasons.append("Expected high traffic increases near-term demand.")

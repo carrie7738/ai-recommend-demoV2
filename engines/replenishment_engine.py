@@ -33,6 +33,24 @@ class ReplenishmentEngine:
         context: dict[str, Any],
         limit: int = 10,
     ) -> list[dict[str, Any]]:
+        recommendations = self.generate_candidate_pool(workbook, customer_id, context)
+        high_score = [r for r in recommendations if r["score"] >= HIGH_SCORE_THRESHOLD]
+        if high_score:
+            return high_score[:limit]
+
+        medium_score = [r for r in recommendations if r["score"] >= MEDIUM_SCORE_THRESHOLD]
+        if medium_score:
+            return medium_score[:limit]
+
+        return recommendations[:limit]
+
+    def generate_candidate_pool(
+        self,
+        workbook: dict[str, pd.DataFrame],
+        customer_id: str,
+        context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Return all scored replenishment candidates for budget-aware plan allocation."""
         orders = self._prepare_orders(workbook, customer_id)
         inventory = self._prepare_inventory(workbook, customer_id)
         products = workbook["Product"].copy()
@@ -91,16 +109,7 @@ class ReplenishmentEngine:
             recommendations.append(score_pack)
 
         recommendations.sort(key=lambda item: (-item["score"], -item["quantity"], item["product"]))
-
-        high_score = [r for r in recommendations if r["score"] >= HIGH_SCORE_THRESHOLD]
-        if high_score:
-            return high_score[:limit]
-
-        medium_score = [r for r in recommendations if r["score"] >= MEDIUM_SCORE_THRESHOLD]
-        if medium_score:
-            return medium_score[:limit]
-
-        return recommendations[:limit]
+        return recommendations
 
     def _score_product(
         self,
@@ -330,5 +339,4 @@ class ReplenishmentEngine:
             return float(recent_orders["Quantity"].sum()) / 90.0
         span_days = max((reference_date - product_orders["OrderDate"].min()).days, 1)
         return float(product_orders["Quantity"].sum()) / span_days
-
 

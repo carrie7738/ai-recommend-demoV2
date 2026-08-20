@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import re
 from typing import Any
 
@@ -30,6 +31,8 @@ Top-level JSON fields:
 - uncertainty: object
 - missing_information: array
 - recommendation_readiness: object
+- store_context: object
+- store_considerations: array of up to 3 short sentences
 
 business_intent:
 - primary_intent: "stockout_prevention", "seasonal_preparation", "promotion_support", "trial_growth", "budget_optimization", "waste_reduction", "supplier_planning", or "general_planning"
@@ -77,6 +80,7 @@ Rules:
 - High-risk missing information should set should_ask_follow_up=true but can_generate_recommendation must remain true.
 - If the request is vague and lacks business goal, demand driver, category and budget, use this exact follow-up question: "Are you optimizing for stockout prevention, budget control, or growth?"
 - Otherwise, set should_ask_follow_up to false and continue recommendations.
+- A trusted store profile may be supplied in a separate system message. Use it to interpret the request, but do not alter its identity fields.
 """
 
 
@@ -91,22 +95,82 @@ class IntentParser:
         self.ai_client = ai_client or AIClient()
         self.understanding_builder = understanding_builder or ProcurementUnderstandingBuilder()
 
-    def parse_intent(self, user_input: str) -> dict[str, Any]:
+    def parse_intent(
+        self,
+        user_input: str,
+        store_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if not self.ai_client.is_available:
             logger.info("AI not available, using fallback parsing.")
-            return self._fallback_parse(user_input)
+            return self._with_store_context(
+                self._with_analysis_source(self._fallback_parse(user_input), "fallback"),
+                store_context,
+            )
 
         messages = [
             {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": (
+                    "Trusted store context from the internal customer master. "
+                    "Do not change these identity fields: "
+                    f"{json.dumps(store_context or {}, ensure_ascii=True)}"
+                ),
+            },
             {"role": "user", "content": user_input},
         ]
 
         try:
             result = self.ai_client.chat_completion_json(messages)
-            return self._normalize_intent(result)
+            return self._with_store_context(
+                self._with_analysis_source(self._normalize_intent(result), "live"),
+                store_context,
+                result.get("store_considerations"),
+            )
         except AIClientError as exc:
             logger.warning("Intent parsing failed, using fallback: %s", exc)
-            return self._fallback_parse(user_input)
+            return self._with_store_context(
+                self._with_analysis_source(self._fallback_parse(user_input), "fallback"),
+                store_context,
+            )
+
+    @staticmethod
+    def _with_analysis_source(intent: dict[str, Any], status: str) -> dict[str, Any]:
+        """Preserve whether the understanding came from DeepSeek or local fallback rules."""
+        enriched = dict(intent)
+        enriched["AIAnalysisStatus"] = status
+        enriched["AIAnalysisSource"] = "DeepSeek" if status == "live" else "Rules fallback"
+        return enriched
+
+    @staticmethod
+    def _with_store_context(
+        intent: dict[str, Any],
+        store_context: dict[str, Any] | None,
+        store_considerations: Any = None,
+    ) -> dict[str, Any]:
+        """Attach master-data store context and discard any model-supplied identity changes."""
+        enriched = dict(intent)
+        trusted_context = {
+            key: str((store_context or {}).get(key, ""))
+            for key in ("CustomerId", "StoreName", "Industry", "Region", "StoreLevel", "CustomerStage")
+        }
+        enriched["StoreContext"] = trusted_context
+
+        considerations = []
+        if isinstance(store_considerations, list):
+            considerations = [str(item).strip() for item in store_considerations if str(item).strip()][:3]
+        if not considerations and trusted_context["StoreName"]:
+            considerations.append(
+                f'{trusted_context["StoreLevel"]} store scale is applied to recommended quantities.'
+            )
+            if trusted_context["CustomerStage"].casefold() == "new":
+                considerations.append("New-store trial purchases are kept conservative.")
+            if trusted_context["Industry"]:
+                considerations.append(
+                    f'Growth opportunities are evaluated for the {trusted_context["Industry"]} industry.'
+                )
+        enriched["StoreConsiderations"] = considerations
+        return enriched
 
     def _normalize_intent(self, raw: dict[str, Any]) -> dict[str, Any]:
         return self.understanding_builder.normalize_ai_response(raw)

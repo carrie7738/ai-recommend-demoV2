@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "01_high_traffic",
+    "title": "High traffic and budget optimization",
+    "request": "For Cafe Store 001, high traffic is expected next week. Budget is NZD 1000."
+  },
+  {
+    "slug": "02_holiday_promo",
+    "title": "Christmas promotion readiness",
+    "request": "For Cafe Store 001, prepare for a Christmas promotion. High traffic is expected. Budget is NZD 1000."
+  },
+  {
+    "slug": "03_low_budget",
+    "title": "Low budget stockout prevention",
+    "request": "For Cafe Store 001, we need to prevent stockouts next week. Budget is NZD 300."
+  },
+  {
+    "slug": "04_long_shelf",
+    "title": "Long shelf-life preference",
+    "request": "For Cafe Store 001, prepare a NZD 1000 replenishment plan for next week. Prefer long shelf-life products."
+  },
+  {
+    "slug": "05_fruit_focus",
+    "title": "Fruit category focus",
+    "request": "For Cafe Store 001, demand for fruit is increasing next week. Budget is NZD 800. Focus on Fruit products."
+  },
+  {
+    "slug": "06_no_budget",
+    "title": "No budget constraint",
+    "request": "For Cafe Store 001, high traffic is expected next week. Please prepare a replenishment plan."
+  }
+]
