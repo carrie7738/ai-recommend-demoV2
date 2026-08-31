@@ -5,15 +5,228 @@ import json
 import re
 from typing import Any
 
+from jsonschema import Draft202012Validator
+
 from services.ai_client import AIClient, AIClientError
 from services.procurement_understanding import ProcurementUnderstandingBuilder
 
 logger = logging.getLogger(__name__)
 
 
+INTENT_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "budget", "traffic_level", "promotion_flag", "shelf_life_preference",
+        "preferred_category", "excluded_category", "time_range", "expected_intent",
+        "business_intent", "decision_signals", "uncertainty", "missing_information",
+        "recommendation_readiness", "structured_intent", "store_context",
+        "store_considerations",
+    ],
+    "properties": {
+        "budget": {"type": ["number", "null"]},
+        "traffic_level": {"enum": ["HIGH", "NORMAL"]},
+        "promotion_flag": {"type": "boolean"},
+        "shelf_life_preference": {"enum": ["LONG", "NORMAL"]},
+        "preferred_category": {"type": ["string", "null"]},
+        "excluded_category": {"type": ["string", "null"]},
+        "time_range": {
+            "enum": ["today", "this_week", "next_week", "holiday_window", "normal", "unknown"]
+        },
+        "expected_intent": {"type": "string"},
+        "business_intent": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "primary_intent", "secondary_intents", "decision_type", "urgency",
+                "intent_summary",
+            ],
+            "properties": {
+                "primary_intent": {
+                    "enum": [
+                        "stockout_prevention", "seasonal_preparation", "promotion_support",
+                        "trial_growth", "budget_optimization", "waste_reduction",
+                        "supplier_planning", "general_planning",
+                    ]
+                },
+                "secondary_intents": {"type": "array", "items": {"type": "string"}},
+                "decision_type": {
+                    "enum": ["routine_reorder", "urgent_action", "planning", "exploratory", "optimization"]
+                },
+                "urgency": {"enum": ["low", "medium", "high", "critical"]},
+                "intent_summary": {"type": "string"},
+            },
+        },
+        "decision_signals": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "expected_demand_change", "demand_driver", "stockout_sensitivity",
+                "waste_sensitivity", "price_sensitivity", "growth_appetite",
+                "budget_strictness", "substitution_allowed",
+            ],
+            "properties": {
+                "expected_demand_change": {"enum": ["increase", "decrease", "stable", "unknown"]},
+                "demand_driver": {"enum": ["traffic", "holiday", "promotion", "seasonality", "event", "unknown"]},
+                "stockout_sensitivity": {"enum": ["low", "medium", "high"]},
+                "waste_sensitivity": {"enum": ["low", "medium", "high"]},
+                "price_sensitivity": {"enum": ["low", "medium", "high"]},
+                "growth_appetite": {"enum": ["low", "medium", "high"]},
+                "budget_strictness": {"enum": ["none", "soft", "strict"]},
+                "substitution_allowed": {"type": "boolean"},
+            },
+        },
+        "uncertainty": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["overall_confidence", "field_sources", "low_confidence_fields"],
+            "properties": {
+                "overall_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "field_sources": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "budget", "traffic_level", "promotion_flag",
+                        "shelf_life_preference", "category", "time_horizon",
+                    ],
+                    "properties": {
+                        key: {"enum": ["explicit", "inferred", "missing"]}
+                        for key in [
+                            "budget", "traffic_level", "promotion_flag",
+                            "shelf_life_preference", "category", "time_horizon",
+                        ]
+                    },
+                },
+                "low_confidence_fields": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+        "missing_information": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["field", "importance", "impact", "suggested_question"],
+                "properties": {
+                    "field": {"type": "string"},
+                    "importance": {"enum": ["optional", "recommended", "high_risk"]},
+                    "impact": {"type": "string"},
+                    "suggested_question": {"type": "string"},
+                },
+            },
+        },
+        "recommendation_readiness": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "can_generate_recommendation", "should_ask_follow_up", "confidence_level",
+                "confidence_score", "confidence_drivers", "confidence_risks",
+                "follow_up_question",
+            ],
+            "properties": {
+                "can_generate_recommendation": {"type": "boolean"},
+                "should_ask_follow_up": {"type": "boolean"},
+                "confidence_level": {"enum": ["low", "medium", "high"]},
+                "confidence_score": {"type": "number", "minimum": 0, "maximum": 1},
+                "confidence_drivers": {"type": "array", "items": {"type": "string"}},
+                "confidence_risks": {"type": "array", "items": {"type": "string"}},
+                "follow_up_question": {"type": "string"},
+            },
+        },
+        "structured_intent": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "store_id", "budget", "objective", "traffic_expectation", "occasion",
+                "category_preference", "hard_constraints", "soft_preferences",
+                "explicit_products",
+            ],
+            "properties": {
+                "store_id": {"type": "string"},
+                "budget": {"type": ["number", "null"]},
+                "objective": {
+                    "enum": [
+                        "PREVENT_STOCKOUT",
+                        "SEASONAL_PREPARATION",
+                        "DISCOVER_NEW_OPPORTUNITY",
+                        "BUDGET_OPTIMIZATION",
+                        "REDUCE_WASTE",
+                        "SUPPLIER_PLANNING",
+                        "GENERAL_PLANNING",
+                    ]
+                },
+                "traffic_expectation": {"enum": ["HIGH", "NORMAL", "LOW"]},
+                "occasion": {"enum": ["CHRISTMAS", "NONE"]},
+                "category_preference": {"type": "array", "items": {"type": "string"}},
+                "hard_constraints": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["type", "operator", "values"],
+                                "properties": {
+                                    "type": {"const": "CATEGORY"},
+                                    "operator": {"enum": ["INCLUDE_ONLY", "EXCLUDE"]},
+                                    "values": {"type": "array", "items": {"type": "string"}},
+                                },
+                            },
+                            {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["type", "operator", "value"],
+                                "properties": {
+                                    "type": {"const": "SHELF_LIFE"},
+                                    "operator": {"const": "REQUIRE_LEVEL"},
+                                    "value": {"enum": ["LONG", "MEDIUM", "SHORT"]},
+                                },
+                            },
+                        ]
+                    },
+                },
+                "soft_preferences": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["type", "value"],
+                        "properties": {
+                            "type": {"enum": ["CATEGORY", "SHELF_LIFE"]},
+                            "value": {"type": "string"},
+                        },
+                    },
+                },
+                "explicit_products": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["sku", "product_name", "quantity_intent"],
+                        "properties": {
+                            "sku": {"type": "string"},
+                            "product_name": {"type": "string"},
+                            "quantity_intent": {"enum": ["LOW", "NORMAL", "HIGH"]},
+                        },
+                    },
+                },
+            },
+        },
+        "store_context": {"type": "object", "additionalProperties": False, "properties": {}},
+        "store_considerations": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+    },
+}
+
+
+class IntentContractError(ValueError):
+    """Raised when a schema-capable provider violates the structured intent contract."""
+
+
 INTENT_SYSTEM_PROMPT = """You are a procurement consultant semantic understanding engine.
 
-Analyze the user's procurement request and return JSON only.
+Analyze the user's procurement request and return exactly one raw JSON object. Do not wrap it in
+Markdown or a code fence. Use only the fields defined below. Information not explicitly stated by
+the user or present in trusted store context must be null, empty, or "unknown" as allowed by the
+contract; never fill missing facts from general knowledge.
 
 Return both backward-compatible extracted fields and consultant-style understanding.
 
@@ -31,6 +244,7 @@ Top-level JSON fields:
 - uncertainty: object
 - missing_information: array
 - recommendation_readiness: object
+- structured_intent: object
 - store_context: object
 - store_considerations: array of up to 3 short sentences
 
@@ -71,16 +285,34 @@ recommendation_readiness:
 - confidence_risks: array of short sentences
 - follow_up_question: string, empty when no follow-up is needed
 
+structured_intent:
+- store_id: string, empty when not resolved from trusted master data
+- budget: number or null
+- objective: uppercase business objective
+- traffic_expectation: "HIGH", "NORMAL", or "LOW"
+- occasion: uppercase occasion such as "CHRISTMAS", or "NONE"
+- category_preference: array of category names
+- hard_constraints: array. Supported objects are CATEGORY with operator INCLUDE_ONLY or EXCLUDE,
+  and SHELF_LIFE with operator REQUIRE_LEVEL and value LONG/MEDIUM/SHORT
+- soft_preferences: array of CATEGORY or SHELF_LIFE objects with a value
+- explicit_products: array of objects with sku, product_name, and quantity_intent LOW/NORMAL/HIGH
+
 Rules:
 - Missing budget is optional and must not block recommendations. Set budget_strictness to "none".
 - If user says "under", "within", "do not exceed", or gives a hard budget, set budget_strictness to "strict".
 - If user says "around" or "if possible" with budget, set budget_strictness to "soft".
 - High traffic, busy periods, events, holidays, or promotions imply demand increase.
 - Avoiding short shelf-life or fresh products implies high waste sensitivity.
+- "prefer" and "focus on" are soft preferences. They must not become filters.
+- Use hard constraints only for explicit wording such as "only", "must", "do not accept", or "no other categories".
+- A user-requested product is strong evidence. Put it in explicit_products even when peer evidence may be low.
 - High-risk missing information should set should_ask_follow_up=true but can_generate_recommendation must remain true.
 - If the request is vague and lacks business goal, demand driver, category and budget, use this exact follow-up question: "Are you optimizing for stockout prevention, budget control, or growth?"
 - Otherwise, set should_ask_follow_up to false and continue recommendations.
 - A trusted store profile may be supplied in a separate system message. Use it to interpret the request, but do not alter its identity fields.
+
+JSON output example (the field names and nesting are mandatory; values are illustrative only):
+{"budget":null,"traffic_level":"NORMAL","promotion_flag":false,"shelf_life_preference":"NORMAL","preferred_category":null,"excluded_category":null,"time_range":"unknown","expected_intent":"General procurement planning.","business_intent":{"primary_intent":"general_planning","secondary_intents":[],"decision_type":"planning","urgency":"low","intent_summary":"General procurement planning."},"decision_signals":{"expected_demand_change":"unknown","demand_driver":"unknown","stockout_sensitivity":"medium","waste_sensitivity":"medium","price_sensitivity":"medium","growth_appetite":"medium","budget_strictness":"none","substitution_allowed":false},"uncertainty":{"overall_confidence":0.5,"field_sources":{"budget":"missing","traffic_level":"missing","promotion_flag":"missing","shelf_life_preference":"missing","category":"missing","time_horizon":"missing"},"low_confidence_fields":[]},"missing_information":[],"recommendation_readiness":{"can_generate_recommendation":true,"should_ask_follow_up":false,"confidence_level":"medium","confidence_score":0.5,"confidence_drivers":[],"confidence_risks":[],"follow_up_question":""},"structured_intent":{"store_id":"","budget":null,"objective":"GENERAL_PLANNING","traffic_expectation":"NORMAL","occasion":"NONE","category_preference":[],"hard_constraints":[],"soft_preferences":[],"explicit_products":[]},"store_context":{},"store_considerations":[]}
 """
 
 
@@ -117,17 +349,36 @@ class IntentParser:
                     f"{json.dumps(store_context or {}, ensure_ascii=True)}"
                 ),
             },
-            {"role": "user", "content": user_input},
+            {
+                "role": "user",
+                "content": (
+                    "Analyze the following user_request, not the illustrative JSON example. "
+                    "Extract every explicitly stated fact and return the complete contracted JSON object.\n"
+                    f"user_request: {json.dumps(user_input, ensure_ascii=True)}"
+                ),
+            },
         ]
 
         try:
-            result = self.ai_client.chat_completion_json(messages)
+            if getattr(self.ai_client, "supports_json_schema", False):
+                result = self.ai_client.chat_completion_json(
+                    messages,
+                    json_schema=INTENT_JSON_SCHEMA,
+                    schema_name="procurement_intent",
+                )
+                self._validate_structured_output(result)
+            else:
+                result = self.ai_client.chat_completion_json(messages)
             return self._with_store_context(
-                self._with_analysis_source(self._normalize_intent(result), "live"),
+                self._with_analysis_source(
+                    self._normalize_intent(result),
+                    "live",
+                    getattr(self.ai_client, "provider_name", "deepseek"),
+                ),
                 store_context,
                 result.get("store_considerations"),
             )
-        except AIClientError as exc:
+        except (AIClientError, IntentContractError) as exc:
             logger.warning("Intent parsing failed, using fallback: %s", exc)
             return self._with_store_context(
                 self._with_analysis_source(self._fallback_parse(user_input), "fallback"),
@@ -135,11 +386,20 @@ class IntentParser:
             )
 
     @staticmethod
-    def _with_analysis_source(intent: dict[str, Any], status: str) -> dict[str, Any]:
-        """Preserve whether the understanding came from DeepSeek or local fallback rules."""
+    def _with_analysis_source(
+        intent: dict[str, Any],
+        status: str,
+        provider_name: str = "deepseek",
+    ) -> dict[str, Any]:
+        """Preserve whether understanding came from the configured model or fallback rules."""
         enriched = dict(intent)
         enriched["AIAnalysisStatus"] = status
-        enriched["AIAnalysisSource"] = "DeepSeek" if status == "live" else "Rules fallback"
+        display_names = {"deepseek": "DeepSeek", "glm": "GLM", "gemini": "Gemini"}
+        enriched["AIAnalysisSource"] = (
+            display_names.get(provider_name.casefold(), provider_name)
+            if status == "live"
+            else "Rules fallback"
+        )
         return enriched
 
     @staticmethod
@@ -155,6 +415,9 @@ class IntentParser:
             for key in ("CustomerId", "StoreName", "Industry", "Region", "StoreLevel", "CustomerStage")
         }
         enriched["StoreContext"] = trusted_context
+        structured_intent = dict(enriched.get("StructuredIntent") or {})
+        structured_intent["store_id"] = trusted_context["CustomerId"]
+        enriched["StructuredIntent"] = structured_intent
 
         considerations = []
         if isinstance(store_considerations, list):
@@ -181,16 +444,24 @@ class IntentParser:
         intent = self._empty_intent()
 
         if any(w in lower for w in ["budget", "nzd", "nz$", "$", "dollar"]):
-            match = re.search(r'(\d+(?:\.\d+)?)', lower)
+            match = re.search(
+                r'(?:budget(?:\s+is)?\s*(?:of\s*)?(?:nzd|nz\$|\$)?|nzd|nz\$|\$)\s*(\d+(?:\.\d+)?)',
+                lower,
+            )
             if match:
                 intent["Budget"] = float(match.group(1))
 
         if any(w in lower for w in ["traffic", "busy", "rush", "crowd"]):
             intent["TrafficLevel"] = "HIGH"
 
+        if "stockout" in lower or "out of stock" in lower:
+            intent["Objective"] = "PREVENT_STOCKOUT"
+
         if any(w in lower for w in ["christmas", "holiday", "festival", "promotion"]):
             intent["PromotionFlag"] = True
             intent["TimeRange"] = "holiday_window"
+            intent["Occasion"] = "CHRISTMAS" if "christmas" in lower else "HOLIDAY"
+            intent["Objective"] = "SEASONAL_PREPARATION"
         elif "next week" in lower:
             intent["TimeRange"] = "next_week"
         elif "this week" in lower:
@@ -214,8 +485,61 @@ class IntentParser:
                     intent["PreferredCategory"] = cat.capitalize()
                     break
 
+        hard_constraints: list[dict[str, Any]] = []
+        soft_preferences: list[dict[str, str]] = []
+        for cat in ["fruit", "vegetable", "dairy", "frozen", "dry", "fresh"]:
+            readable = cat.capitalize()
+            if re.search(rf"\bonly\s+{re.escape(cat)}\b", lower) or (
+                cat in lower and any(phrase in lower for phrase in ["no other categor", "不要其他品类", "只采购"])
+            ):
+                hard_constraints.append({
+                    "type": "CATEGORY",
+                    "operator": "INCLUDE_ONLY",
+                    "values": [readable],
+                })
+            elif intent["PreferredCategory"] == readable:
+                soft_preferences.append({"type": "CATEGORY", "value": readable})
+
+        hard_shelf_phrases = [
+            "only long shelf",
+            "must be long shelf",
+            "do not accept short shelf",
+            "不接受短保质期",
+            "只要长保质期",
+            "必须长保质期",
+        ]
+        if any(phrase in lower for phrase in hard_shelf_phrases):
+            hard_constraints.append({
+                "type": "SHELF_LIFE",
+                "operator": "REQUIRE_LEVEL",
+                "value": "LONG",
+            })
+        elif intent["ShelfLifePreference"] == "LONG":
+            soft_preferences.append({"type": "SHELF_LIFE", "value": "LONG"})
+
+        explicit_products = [
+            {"sku": sku.upper(), "product_name": "", "quantity_intent": "NORMAL"}
+            for sku in dict.fromkeys(re.findall(r"\bP\d{3}\b", user_input, flags=re.IGNORECASE))
+        ]
+        intent["HardConstraints"] = hard_constraints
+        intent["SoftPreferences"] = soft_preferences
+        intent["ExplicitProducts"] = explicit_products
+
         intent["ExpectedIntent"] = user_input[:100]
         return self.understanding_builder.build_from_base(intent)
+
+    @staticmethod
+    def _validate_structured_output(result: Any) -> None:
+        errors = sorted(
+            Draft202012Validator(INTENT_JSON_SCHEMA).iter_errors(result),
+            key=lambda item: list(item.path),
+        )
+        if errors:
+            error = errors[0]
+            path = ".".join(str(item) for item in error.path) or "root"
+            raise IntentContractError(
+                f"Intent schema violation at {path}: {error.message}"
+            )
 
     @staticmethod
     def _empty_intent() -> dict[str, Any]:
@@ -228,4 +552,9 @@ class IntentParser:
             "ExcludedCategory": None,
             "TimeRange": "normal",
             "ExpectedIntent": "",
+            "Occasion": "NONE",
+            "Objective": None,
+            "HardConstraints": [],
+            "SoftPreferences": [],
+            "ExplicitProducts": [],
         }

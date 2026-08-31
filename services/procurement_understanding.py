@@ -12,12 +12,82 @@ class ProcurementUnderstandingBuilder:
     def normalize_ai_response(self, raw: dict[str, Any]) -> dict[str, Any]:
         base = self.normalize_base_fields(raw)
         base.update(self.normalize_understanding(raw, base))
+        base["StructuredIntent"] = self.normalize_structured_intent(raw, base)
         return base
 
     def build_from_base(self, base: dict[str, Any]) -> dict[str, Any]:
         enriched = dict(base)
         enriched.update(self._build_understanding_from_base(base))
+        enriched["StructuredIntent"] = self.normalize_structured_intent(base, enriched)
         return enriched
+
+    def normalize_structured_intent(
+        self,
+        raw: dict[str, Any],
+        normalized: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build the V2 intent contract while retaining all V1 top-level fields."""
+        supplied = raw.get("structured_intent")
+        if not isinstance(supplied, dict):
+            supplied = raw.get("StructuredIntent")
+        if not isinstance(supplied, dict):
+            supplied = {}
+
+        business_intent = normalized.get("BusinessIntent") or {}
+        preferred_category = normalized.get("PreferredCategory")
+        excluded_category = normalized.get("ExcludedCategory")
+        shelf_preference = normalized.get("ShelfLifePreference")
+
+        hard_constraints = self._normalize_constraints(
+            supplied.get("hard_constraints", raw.get("hard_constraints", raw.get("HardConstraints")))
+        )
+        soft_preferences = self._normalize_preferences(
+            supplied.get("soft_preferences", raw.get("soft_preferences", raw.get("SoftPreferences")))
+        )
+
+        if excluded_category and not self._contains_constraint(hard_constraints, "CATEGORY", excluded_category):
+            hard_constraints.append({
+                "type": "CATEGORY",
+                "operator": "EXCLUDE",
+                "values": [excluded_category],
+            })
+        if preferred_category and not self._contains_preference(soft_preferences, "CATEGORY", preferred_category):
+            soft_preferences.append({"type": "CATEGORY", "value": preferred_category})
+        if shelf_preference == "LONG" and not self._contains_preference(soft_preferences, "SHELF_LIFE", "LONG"):
+            soft_preferences.append({"type": "SHELF_LIFE", "value": "LONG"})
+
+        category_preferences = self._as_text_list(
+            supplied.get("category_preference", raw.get("category_preference")),
+            [],
+        )
+        if preferred_category and preferred_category not in category_preferences:
+            category_preferences.append(preferred_category)
+
+        return {
+            "store_id": self._as_optional_text(
+                supplied.get("store_id", raw.get("store_id", raw.get("StoreId")))
+            ) or "",
+            "budget": normalized.get("Budget"),
+            "objective": self._normalize_objective(
+                supplied.get("objective", raw.get("objective", raw.get("Objective"))),
+                business_intent,
+            ),
+            "traffic_expectation": self._as_choice(
+                supplied.get("traffic_expectation", raw.get("traffic_expectation", normalized.get("TrafficLevel"))),
+                {"HIGH", "NORMAL", "LOW"},
+                "NORMAL",
+            ),
+            "occasion": self._normalize_occasion(
+                supplied.get("occasion", raw.get("occasion", raw.get("Occasion"))),
+                normalized,
+            ),
+            "category_preference": category_preferences,
+            "hard_constraints": hard_constraints,
+            "soft_preferences": soft_preferences,
+            "explicit_products": self._normalize_explicit_products(
+                supplied.get("explicit_products", raw.get("explicit_products", raw.get("ExplicitProducts")))
+            ),
+        }
 
     def normalize_base_fields(self, raw: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -307,6 +377,165 @@ class ProcurementUnderstandingBuilder:
                 "FollowUpQuestion": FOLLOW_UP_QUESTION if should_ask_follow_up else "",
             },
         }
+
+    @classmethod
+    def _normalize_constraints(cls, value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        normalized: list[dict[str, Any]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            constraint_type = str(item.get("type") or "").strip().upper()
+            if constraint_type not in {"CATEGORY", "SHELF_LIFE"}:
+                continue
+            operator = str(item.get("operator") or "").strip().upper()
+            if constraint_type == "CATEGORY" and operator not in {"INCLUDE_ONLY", "EXCLUDE"}:
+                continue
+            if constraint_type == "SHELF_LIFE" and operator != "REQUIRE_LEVEL":
+                continue
+            entry: dict[str, Any] = {"type": constraint_type, "operator": operator}
+            if constraint_type == "CATEGORY":
+                raw_values = item.get("values")
+                if not isinstance(raw_values, list):
+                    raw_values = [item.get("value")] if item.get("value") is not None else []
+                entry["values"] = [str(raw).strip() for raw in raw_values if str(raw).strip()]
+                if not entry["values"]:
+                    continue
+            else:
+                level = str(item.get("value") or "").strip().upper()
+                if level not in {"LONG", "MEDIUM", "SHORT"}:
+                    continue
+                entry["value"] = level
+            normalized.append(entry)
+        return normalized
+
+    @classmethod
+    def _normalize_preferences(cls, value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        normalized: list[dict[str, str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            preference_type = str(item.get("type") or "").strip().upper()
+            preference_value = str(item.get("value") or "").strip()
+            if preference_type not in {"CATEGORY", "SHELF_LIFE"} or not preference_value:
+                continue
+            if preference_type == "SHELF_LIFE":
+                preference_value = preference_value.upper()
+                if preference_value not in {"LONG", "MEDIUM", "SHORT"}:
+                    continue
+            normalized.append({"type": preference_type, "value": preference_value})
+        return normalized
+
+    @classmethod
+    def _normalize_explicit_products(cls, value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        normalized: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in value:
+            if isinstance(item, str):
+                item = {"sku": item}
+            if not isinstance(item, dict):
+                continue
+            sku = str(item.get("sku") or item.get("product_id") or "").strip().upper()
+            product_name = str(item.get("product_name") or item.get("name") or "").strip()
+            if not sku and not product_name:
+                continue
+            quantity_intent = str(item.get("quantity_intent") or "NORMAL").strip().upper()
+            if quantity_intent not in {"LOW", "NORMAL", "HIGH"}:
+                quantity_intent = "NORMAL"
+            key = (sku, product_name.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append({
+                "sku": sku,
+                "product_name": product_name,
+                "quantity_intent": quantity_intent,
+            })
+        return normalized
+
+    @staticmethod
+    def _contains_constraint(constraints: list[dict[str, Any]], kind: str, value: str) -> bool:
+        wanted = value.casefold()
+        return any(
+            item.get("type") == kind
+            and (
+                str(item.get("value") or "").casefold() == wanted
+                or wanted in {str(raw).casefold() for raw in item.get("values", [])}
+            )
+            for item in constraints
+        )
+
+    @staticmethod
+    def _contains_preference(preferences: list[dict[str, str]], kind: str, value: str) -> bool:
+        wanted = value.casefold()
+        return any(
+            item.get("type") == kind and str(item.get("value") or "").casefold() == wanted
+            for item in preferences
+        )
+
+    @staticmethod
+    def _normalize_occasion(value: Any, normalized: dict[str, Any]) -> str:
+        text = str(value or "").strip().upper()
+        expected = str(normalized.get("ExpectedIntent") or "").casefold()
+        if "CHRISTMAS" in text or "christmas" in expected:
+            return "CHRISTMAS"
+        if "HOLIDAY" in text or (
+            not text
+            and (
+                normalized.get("TimeRange") == "holiday_window"
+                or normalized.get("PromotionFlag")
+            )
+        ):
+            return "HOLIDAY"
+        return "NONE"
+
+    @classmethod
+    def _normalize_objective(
+        cls,
+        value: Any,
+        business_intent: dict[str, Any],
+    ) -> str:
+        text = str(value or "").strip().upper().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "PREVENT_STOCKOUT": "PREVENT_STOCKOUT",
+            "PREVENT_STOCKOUTS": "PREVENT_STOCKOUT",
+            "STOCKOUT_PREVENTION": "PREVENT_STOCKOUT",
+            "SEASONAL_PREPARATION": "SEASONAL_PREPARATION",
+            "PROMOTION_SUPPORT": "SEASONAL_PREPARATION",
+            "DISCOVER_NEW_OPPORTUNITY": "DISCOVER_NEW_OPPORTUNITY",
+            "TRIAL_GROWTH": "DISCOVER_NEW_OPPORTUNITY",
+            "BUDGET_OPTIMIZATION": "BUDGET_OPTIMIZATION",
+            "REDUCE_WASTE": "REDUCE_WASTE",
+            "WASTE_REDUCTION": "REDUCE_WASTE",
+            "SUPPLIER_PLANNING": "SUPPLIER_PLANNING",
+            "GENERAL_PLANNING": "GENERAL_PLANNING",
+        }
+        if text in aliases:
+            return aliases[text]
+        if "STOCKOUT" in text:
+            return "PREVENT_STOCKOUT"
+        if "CHRISTMAS" in text or "SEASON" in text or "PROMOTION" in text:
+            return "SEASONAL_PREPARATION"
+        return cls._objective_from_business_intent(business_intent)
+
+    @staticmethod
+    def _objective_from_business_intent(business_intent: dict[str, Any]) -> str:
+        primary = str(business_intent.get("PrimaryIntent") or "general_planning").casefold()
+        return {
+            "stockout_prevention": "PREVENT_STOCKOUT",
+            "seasonal_preparation": "SEASONAL_PREPARATION",
+            "promotion_support": "SEASONAL_PREPARATION",
+            "trial_growth": "DISCOVER_NEW_OPPORTUNITY",
+            "budget_optimization": "BUDGET_OPTIMIZATION",
+            "waste_reduction": "REDUCE_WASTE",
+            "supplier_planning": "SUPPLIER_PLANNING",
+            "general_planning": "GENERAL_PLANNING",
+        }.get(primary, "GENERAL_PLANNING")
 
     def _normalize_missing_item(self, item: dict[str, Any]) -> dict[str, str]:
         return {

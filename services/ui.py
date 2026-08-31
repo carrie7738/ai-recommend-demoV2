@@ -988,13 +988,13 @@ def render_ai_understanding(context: dict[str, Any]) -> None:
     store_considerations = context.get("StoreConsiderations") or []
 
     if analysis_status == "live":
-        analysis_badge = "DeepSeek Semantic Analysis"
+        analysis_badge = f"{analysis_source} Semantic Analysis"
         analysis_badge_class = "pill-purple"
-        analysis_subtitle = "DeepSeek translated this request into procurement intent, decision signals, and confidence."
+        analysis_subtitle = f"{analysis_source} translated this request into procurement intent, decision signals, and confidence."
     else:
         analysis_badge = "Rules Fallback"
         analysis_badge_class = "pill-amber"
-        analysis_subtitle = "DeepSeek analysis is unavailable for this request; local rules produced the interpretation."
+        analysis_subtitle = "Model analysis is unavailable for this request; local rules produced the interpretation."
 
     primary_intent = _titleize_signal(business_intent.get("PrimaryIntent", "general_planning"))
     urgency = _titleize_signal(business_intent.get("Urgency", "medium"))
@@ -1071,7 +1071,7 @@ def render_ai_understanding(context: dict[str, Any]) -> None:
         '<div class="section-card-header">'
         '<div class="section-icon section-icon-blue">AI</div>'
         '<div>'
-        '<div class="section-title">AI Decision Brief</div>'
+        '<div class="section-title">AI Understanding</div>'
         '<div class="section-subtitle">What matters for this purchase decision.</div>'
         '</div>'
         '</div>'
@@ -1102,6 +1102,173 @@ def render_ai_understanding(context: dict[str, Any]) -> None:
         '</div>'
         f'{follow_up_html}'
         '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_v2_procurement_strategy(strategy: dict[str, Any], retry_count: int = 0) -> None:
+    primary = _titleize_signal(strategy.get("primary_objective", "GENERAL_PLANNING"))
+    summary = str(strategy.get("strategy_summary") or "")
+    primary_signals = strategy.get("primary_signals") or []
+    secondary_signals = strategy.get("secondary_signals") or []
+    signal_html = "".join(
+        f'<span class="understanding-pill pill-purple">{escape(_titleize_signal(signal))}</span>'
+        for signal in primary_signals
+    ) + "".join(
+        f'<span class="understanding-pill pill-amber">{escape(_titleize_signal(signal))}</span>'
+        for signal in secondary_signals
+    )
+    retry_note = f" · {retry_count} constrained retry" if retry_count else ""
+    st.markdown(
+        '<div class="section-card">'
+        '<div class="section-card-header">'
+        '<div class="section-icon section-icon-blue">02</div>'
+        '<div><div class="section-title">Procurement Strategy</div>'
+        f'<div class="section-subtitle">Provider-neutral AI decision{escape(retry_note)}.</div></div>'
+        '</div>'
+        f'<div class="understanding-primary">{escape(primary)}</div>'
+        f'<div class="understanding-secondary">{escape(summary)}</div>'
+        f'<div class="understanding-pills" style="margin-top:0.8rem;">{signal_html}</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_v2_runtime_status(
+    provider: str,
+    model: str,
+    pipeline_status: dict[str, Any] | None,
+    structured_intent: dict[str, Any] | None,
+    intent_source: str | None,
+) -> None:
+    """Expose model and V2/fallback state without rendering credentials or raw prompts."""
+    status = pipeline_status or {}
+    pipeline_version = str(status.get("pipeline_version") or "V2 NOT RUN")
+    v2_status = str(status.get("v2_status") or "NOT RUN")
+    fallback = bool(status.get("fallback_triggered"))
+    fallback_text = "Yes" if fallback else "No"
+    fallback_reason = str(status.get("fallback_reason") or "")
+    intent = structured_intent or {}
+    intent_items = [
+        ("Objective", intent.get("objective") or "Not provided"),
+        ("Budget", "No budget" if intent.get("budget") is None else f"NZD {intent['budget']}"),
+        ("Traffic", intent.get("traffic_expectation") or "Not provided"),
+        ("Occasion", intent.get("occasion") or "NONE"),
+        ("Categories", ", ".join(intent.get("category_preference") or []) or "None"),
+    ]
+    intent_html = "".join(
+        '<div class="understanding-mini-row">'
+        f'<span class="understanding-mini-label">{escape(str(label))}</span>'
+        f'<span class="understanding-mini-value">{escape(str(value))}</span>'
+        '</div>'
+        for label, value in intent_items
+    )
+    failure_html = (
+        '<div class="understanding-follow-up">'
+        f'<strong>Fallback reason:</strong> {escape(fallback_reason)}'
+        '</div>'
+        if fallback_reason else ""
+    )
+    st.markdown(
+        '<div class="section-card">'
+        '<div class="section-card-header">'
+        '<div class="section-icon section-icon-blue">V2</div>'
+        '<div><div class="section-title">Model &amp; Pipeline Status</div>'
+        '<div class="section-subtitle">Runtime provider and observable V2 execution state.</div></div>'
+        '</div>'
+        '<div class="understanding-pills">'
+        f'<span class="understanding-pill pill-purple">Provider: {escape(provider)}</span>'
+        f'<span class="understanding-pill pill-purple">Model: {escape(model)}</span>'
+        f'<span class="understanding-pill pill-amber">Pipeline: {escape(pipeline_version)}</span>'
+        f'<span class="understanding-pill pill-amber">V2: {escape(v2_status)}</span>'
+        f'<span class="understanding-pill pill-amber">Fallback: {escape(fallback_text)}</span>'
+        f'<span class="understanding-pill pill-purple">Intent: {escape(str(intent_source or "unknown"))}</span>'
+        '</div>'
+        '<div class="understanding-panel" style="margin-top:0.8rem;">'
+        '<div class="understanding-panel-title">Structured Intent</div>'
+        f'{intent_html}'
+        '</div>'
+        f'{failure_html}'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_v2_product_decisions(
+    decisions: list[dict[str, Any]],
+    final_plan: list[dict[str, Any]],
+) -> None:
+    plan_by_id = {item["candidate_id"]: item for item in final_plan}
+    cards = []
+    for decision in decisions:
+        if not decision.get("recommended"):
+            continue
+        candidate_id = str(decision.get("candidate_id") or "")
+        final_item = plan_by_id.get(candidate_id, {})
+        reasons = final_item.get("why_selected") or decision.get("why_selected") or []
+        reason_html = "".join(f"<li>{escape(str(reason))}</li>" for reason in reasons[:3])
+        label = "NEW OPPORTUNITY" if decision.get("recommendation_type") == "DISCOVERY" else "REPLENISHMENT"
+        cards.append(
+            '<div class="why-selected-card">'
+            f'<div class="why-selected-product">{escape(str(final_item.get("product_name") or decision.get("product_name") or candidate_id))}</div>'
+            f'<div class="understanding-secondary">{escape(label)} · {escape(str(decision.get("priority")))} PRIORITY · '
+            f'{escape(str(decision.get("replenishment_intensity")))} INTENSITY</div>'
+            f'<ul>{reason_html}</ul>'
+            '</div>'
+        )
+    content = "".join(cards) or '<div class="understanding-secondary">No candidates retained by the AI decision.</div>'
+    st.markdown(
+        '<h2 class="section-heading">AI Product Decisions</h2>'
+        f'<div class="why-selected-grid">{content}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_v2_purchase_plan(
+    plan: list[dict[str, Any]],
+    optimizer_result: dict[str, Any],
+    validation_result: dict[str, Any],
+) -> None:
+    if validation_result.get("status") != "PASS" or validation_result.get("valid") is not True:
+        violation_codes = ", ".join(
+            str(item.get("code") or "UNKNOWN")
+            for item in validation_result.get("violations", [])
+        ) or "UNKNOWN"
+        st.error(
+            "V2 validation failed. No final purchase plan is available. "
+            f"Violations: {violation_codes}."
+        )
+        return
+
+    rows = "".join(
+        '<tr>'
+        f'<td>{escape(str(item.get("product_name") or item.get("candidate_id") or ""))}</td>'
+        f'<td>{int(item.get("final_qty", 0))}</td>'
+        f'<td>{escape(str(item.get("unit") or ""))}</td>'
+        f'<td>NZD {float(item.get("unit_cost", 0)):.2f}</td>'
+        f'<td style="font-weight:700;">NZD {float(item.get("estimated_cost", 0)):.2f}</td>'
+        f'<td><span class="priority-badge">{escape(str(item.get("priority") or ""))}</span></td>'
+        '</tr>'
+        for item in plan
+    )
+    if not rows:
+        rows = '<tr><td colspan="6">No executable purchase quantities.</td></tr>'
+    status = "Validated" if validation_result.get("valid") else "Validation Failed"
+    total = float(optimizer_result.get("total_cost") or 0)
+    remaining = optimizer_result.get("remaining_budget")
+    remaining_text = "Not constrained" if remaining is None else f"NZD {float(remaining):.2f}"
+    st.markdown(
+        '<h2 class="section-heading" style="margin-top:1.5rem;">Final Purchase Plan</h2>'
+        '<div class="section-card procurement-report">'
+        '<div class="procurement-summary-grid">'
+        f'<div class="procurement-summary-metric primary"><div class="metric-label">Validation</div><div class="metric-value">{escape(status)}</div></div>'
+        f'<div class="procurement-summary-metric primary"><div class="metric-label">Total Investment</div><div class="metric-value highlight">NZD {total:.2f}</div></div>'
+        f'<div class="procurement-summary-metric"><div class="metric-label">Remaining Budget</div><div class="metric-value">{escape(remaining_text)}</div></div>'
+        f'<div class="procurement-summary-metric"><div class="metric-label">Products</div><div class="metric-value">{len(plan)}</div></div>'
+        '</div>'
+        '<table class="procurement-table">'
+        '<tr><th>Product</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Estimated Cost</th><th>Priority</th></tr>'
+        f'{rows}</table></div>',
         unsafe_allow_html=True,
     )
 
