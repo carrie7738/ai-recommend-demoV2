@@ -129,8 +129,8 @@ def inject_theme() -> None:
         }
 
         .section-icon-purple {
-            background: #e8e0f0;
-            color: #7c3aed;
+            background: #dcfce7;
+            color: #15803d;
         }
 
         .section-icon-blue {
@@ -178,8 +178,8 @@ def inject_theme() -> None:
         }
 
         div[data-testid="stTextArea"] textarea:focus {
-            border-color: #7c3aed !important;
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+            border-color: #15803d !important;
+            box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.14) !important;
         }
 
         /* Button */
@@ -191,13 +191,13 @@ def inject_theme() -> None:
         }
 
         div[data-testid="stButton"] > button[kind="primary"] {
-            background: #7c3aed !important;
+            background: #15803d !important;
             border: none !important;
             color: #fff !important;
         }
 
         div[data-testid="stButton"] > button[kind="primary"]:hover {
-            background: #6d28d9 !important;
+            background: #166534 !important;
         }
 
         /* AI Understanding pills */
@@ -232,9 +232,9 @@ def inject_theme() -> None:
         }
 
         .pill-purple {
-            background: #faf5ff;
-            border-color: #e9d5ff;
-            color: #7c3aed;
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #15803d;
         }
 
         .pill-amber {
@@ -521,8 +521,8 @@ def inject_theme() -> None:
         }
 
         .risk-tab.active {
-            color: #7c3aed;
-            border-bottom-color: #7c3aed;
+            color: #15803d;
+            border-bottom-color: #15803d;
         }
 
         .risk-tab:hover {
@@ -844,8 +844,8 @@ def inject_theme() -> None:
         }
 
         div[data-testid="stTextInput"] input:focus {
-            border-color: #7c3aed !important;
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1) !important;
+            border-color: #15803d !important;
+            box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.14) !important;
         }
 
         div[data-testid="stForm"] {
@@ -861,7 +861,7 @@ def inject_theme() -> None:
 
         div[data-testid="stForm"] button[kind="secondary"],
         div[data-testid="stForm"] button[kind="primary"] {
-            background: #7c3aed !important;
+            background: #15803d !important;
             border: none !important;
             color: #fff !important;
             min-height: 44px !important;
@@ -873,7 +873,7 @@ def inject_theme() -> None:
 
         div[data-testid="stForm"] button[kind="secondary"]:hover,
         div[data-testid="stForm"] button[kind="primary"]:hover {
-            background: #6d28d9 !important;
+            background: #166534 !important;
         }
 
         /* Section heading */
@@ -888,6 +888,47 @@ def inject_theme() -> None:
         /* Hide sidebar nav */
         [data-testid="stSidebarNav"] {
             display: none;
+        }
+        .inline-reasons { min-width: 180px; max-width: 280px; white-space: normal; }
+        .reason-tag { display: inline-block; background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; border-radius: 5px; padding: 3px 7px; margin: 2px 4px 2px 0; font-size: .78rem; line-height: 1.4; overflow-wrap: anywhere; }
+        .reason-more { margin-top: 4px; font-size: .8rem; }
+        .reason-more summary { cursor: pointer; color: #15803d; font-weight: 600; }
+        .reason-more ul { padding-left: 1rem; margin: .5rem 0; }
+        .reason-unavailable { color: #64748b; font-size: .78rem; }
+        /* Procurement presentation: reuse the existing palette with fewer surfaces. */
+        .block-container { max-width: 1120px; padding-top: 2rem; }
+        .app-header { margin-bottom: 1.8rem; }
+        .app-header h1 { font-size: 1.35rem; }
+        .section-card, .procurement-report { box-shadow: none; }
+        .request-heading h2 { font-size: 1.6rem; margin: .25rem 0; }
+        .request-heading p { color: #64748b; font-size: .9rem; }
+        button[kind="primaryFormSubmit"], button[kind="primary"] { background: #15803d !important; border-color: #15803d !important; }
+        button[kind="primaryFormSubmit"]:hover, button[kind="primary"]:hover { background: #166534 !important; border-color: #166534 !important; }
+        .understanding-compact { margin: 1.5rem 0; padding: 1rem 0; border-bottom: 1px solid #e2e8f0; }
+        .understanding-compact h2, .opportunities h2 { font-size: 1.1rem; }
+        .intent-fields { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; margin: .75rem 0; }
+        .intent-fields dt { font-size: .8rem; color: #64748b; }
+        .intent-fields dd { margin: .25rem 0 0; font-weight: 600; }
+        .intent-fields small { font-size: .7rem; font-weight: 400; color: #64748b; }
+        .purchase-plan { margin: 1.5rem 0 2rem; }
+        .purchase-plan h2 { font-size: 1.8rem; }
+        .purchase-plan h3 { margin-top: 1.4rem; font-size: 1rem; }
+        .validation-note { color: #36735b; font-size: .8rem; }
+        .procurement-summary-grid { gap: 1rem; margin-bottom: 1.25rem; }
+        .procurement-summary-metric { padding: .8rem; background: #f8fafc; border: 0; border-radius: 6px; }
+        .table-scroll { width: 100%; overflow-x: auto; }
+        .procurement-table { min-width: 620px; width: 100%; }
+        .evidence-row { padding: .75rem 0; border-bottom: 1px solid #e2e8f0; }
+        .evidence-row summary { cursor: pointer; font-weight: 600; }
+        .evidence-row ul { margin-bottom: .25rem; }
+        .opportunity-row { border-bottom: 1px solid #e2e8f0; padding: .8rem 0; }
+        @media (max-width: 640px) {
+            .block-container { padding: 1rem; }
+            .app-header { flex-direction: column; align-items: flex-start; gap: .5rem; }
+            .app-header-right { display: none; }
+            .procurement-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .intent-fields { gap: 1rem; }
+            .metric-value { font-size: 1.05rem; overflow-wrap: anywhere; }
         }
         </style>
         """,
@@ -934,30 +975,17 @@ def render_header(
 
 
 def render_ai_request_section() -> tuple[str, bool]:
-    st.markdown(
-        '<div class="section-card">',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="section-card-header">'
-        '<div class="section-icon section-icon-purple">✦</div>'
-        '<div>'
-        '<div class="section-title">AI Procurement Request</div>'
-        '<div class="section-subtitle">Include your store name or ID, then describe demand, budget, promotion, or shelf-life needs.</div>'
-        '</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    has_result = bool(st.session_state.get("has_user_request"))
+    st.markdown('<div class="request-heading"><div class="section-subtitle">Business Request</div>'
+                f'<h2>{"Update your request" if has_result else "Plan your next order"}</h2>'
+                '<p>Include your store name or ID, then describe demand, budget, promotion, or shelf-life needs.</p></div>',
+                unsafe_allow_html=True)
     with st.form("ai_procurement_request_form"):
-        request = st.text_area(
-            "Request",
-            value=st.session_state.get("ai_request", ""),
-            key="ai_request",
-            height=90,
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Generate procurement plan", type="primary")
-    st.markdown('</div>', unsafe_allow_html=True)
+        request = st.text_area("Request", value=st.session_state.get("ai_request", ""),
+                               key="ai_request", height=90 if has_result else 160,
+                               placeholder="For Cafe Store 001, high traffic is expected next week. Budget is NZD 1000.",
+                               label_visibility="collapsed")
+        submitted = st.form_submit_button("Generate Purchase Plan", type="primary")
     return request, submitted
 
 
@@ -977,133 +1005,31 @@ def _confidence_class(level: str) -> str:
 
 
 def render_ai_understanding(context: dict[str, Any]) -> None:
-    business_intent = context.get("BusinessIntent") or {}
-    decision_signals = context.get("DecisionSignals") or {}
-    uncertainty = context.get("Uncertainty") or {}
-    missing_information = context.get("MissingInformation") or []
-    readiness = context.get("RecommendationReadiness") or {}
-    analysis_status = context.get("AIAnalysisStatus")
-    analysis_source = str(context.get("AIAnalysisSource") or "Rules fallback")
-    store_context = context.get("StoreContext") or {}
-    store_considerations = context.get("StoreConsiderations") or []
-
-    if analysis_status == "live":
-        analysis_badge = f"{analysis_source} Semantic Analysis"
-        analysis_badge_class = "pill-purple"
-        analysis_subtitle = f"{analysis_source} translated this request into procurement intent, decision signals, and confidence."
-    else:
-        analysis_badge = "Rules Fallback"
-        analysis_badge_class = "pill-amber"
-        analysis_subtitle = "Model analysis is unavailable for this request; local rules produced the interpretation."
-
-    primary_intent = _titleize_signal(business_intent.get("PrimaryIntent", "general_planning"))
-    urgency = _titleize_signal(business_intent.get("Urgency", "medium"))
-    decision_type = _titleize_signal(business_intent.get("DecisionType", "planning"))
-    confidence_level = str(readiness.get("ConfidenceLevel", "medium")).title()
-    confidence_score = readiness.get("ConfidenceScore")
-    confidence_display = confidence_level
-    if isinstance(confidence_score, (int, float)):
-        confidence_display = f"{confidence_level} · {confidence_score:.0%}"
-
-    budget = context.get("Budget")
-    budget_mode = "No Budget Constraint" if budget is None else f"Budget NZD {budget}"
-
-    missing_items = []
-    for item in missing_information[:3]:
-        field = item.get("Field", "")
-        importance = item.get("Importance", "optional")
-        impact = item.get("Impact", "")
-        if not field:
-            continue
-        missing_items.append(
-            '<div class="understanding-mini-row">'
-            f'<span class="understanding-mini-label">{escape(_titleize_signal(field))}</span>'
-            f'<span class="understanding-mini-value">{escape(_titleize_signal(importance))}: {escape(impact)}</span>'
-            '</div>'
-        )
-
-    if not missing_items:
-        missing_items.append(
-            '<div class="understanding-mini-row">'
-            '<span class="understanding-mini-label">Missing Info</span>'
-            '<span class="understanding-mini-value">No major blocking information detected.</span>'
-            '</div>'
-        )
-
-    high_risk_missing = any(item.get("Importance") == "high_risk" for item in missing_information)
-    follow_up = readiness.get("FollowUpQuestion") if (readiness.get("ShouldAskFollowUp") or high_risk_missing) else ""
-    follow_up_html = ""
-    if follow_up:
-        follow_up_html = (
-            '<div class="understanding-follow-up">'
-            f'<strong>Input needed:</strong> {escape(str(follow_up))}'
-            '</div>'
-        )
-
-    field_sources = uncertainty.get("FieldSources") or {}
-    source_summary = ", ".join(
-        f"{_titleize_signal(key)}: {_titleize_signal(value)}"
-        for key, value in field_sources.items()
-        if key in {"budget", "traffic_level", "promotion_flag", "shelf_life_preference"}
-    )
-    store_summary = " · ".join(
-        value for value in [
-            store_context.get("StoreName"),
-            store_context.get("Industry"),
-            store_context.get("Region"),
-            store_context.get("StoreLevel"),
-            store_context.get("CustomerStage"),
-        ] if value
-    )
-    store_consideration_html = "".join(
-        f'<div class="understanding-mini-row"><span class="understanding-mini-value">{escape(str(item))}</span></div>'
-        for item in store_considerations[:3]
-    )
-    if not store_consideration_html:
-        store_consideration_html = (
-            '<div class="understanding-mini-row">'
-            '<span class="understanding-mini-value">Store profile is applied to recommendation quantities.</span>'
-            '</div>'
-        )
-
-    st.markdown(
-        '<div class="section-card understanding-card">'
-        '<div class="section-card-header">'
-        '<div class="section-icon section-icon-blue">AI</div>'
-        '<div>'
-        '<div class="section-title">AI Understanding</div>'
-        '<div class="section-subtitle">What matters for this purchase decision.</div>'
-        '</div>'
-        '</div>'
-        '<div class="understanding-pills">'
-        f'<span class="understanding-pill {analysis_badge_class}">✦ {escape(analysis_badge)}</span>'
-        '</div>'
-        '<div class="understanding-grid">'
-        '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Procurement Intent</div>'
-        f'<div class="understanding-primary">{escape(primary_intent)}</div>'
-        '<div class="understanding-secondary">Primary purchase objective</div>'
-        '</div>'
-        '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Demand Signal</div>'
-        f'<div class="understanding-primary">{escape(_titleize_signal(decision_signals.get("ExpectedDemandChange", "unknown")))} Demand</div>'
-        f'<div class="understanding-secondary">Driver: {escape(_titleize_signal(decision_signals.get("DemandDriver", "unknown")))}</div>'
-        '</div>'
-        '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Key Constraint</div>'
-        f'<div class="understanding-primary">{escape(budget_mode)}</div>'
-        f'<div class="understanding-secondary">{escape("Long shelf-life" if context.get("ShelfLifePreference") == "LONG" else "Applied to the final purchase plan")}</div>'
-        '</div>'
-        '<div class="understanding-panel">'
-        '<div class="understanding-panel-title">Confidence</div>'
-        f'<div class="understanding-primary"><span class="understanding-pill {_confidence_class(str(readiness.get("ConfidenceLevel", "medium")))}">{escape(confidence_display)}</span></div>'
-        '<div class="understanding-secondary">Ready for recommendation</div>'
-        '</div>'
-        '</div>'
-        f'{follow_up_html}'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    intent = context.get("StructuredIntent") or {}
+    sources = (context.get("Uncertainty") or {}).get("FieldSources") or {}
+    fields = []
+    def add(label, value, source_key=None):
+        if value is None or value == "" or value == [] or value in ("NONE", "UNKNOWN"):
+            return
+        source = sources.get(source_key)
+        if source == "missing":
+            return
+        note = f' <small>{escape(source.title())}</small>' if source in {"explicit", "inferred"} else ""
+        text = ", ".join(str(x) for x in value) if isinstance(value, list) else str(value).replace("_", " ").title()
+        fields.append(f'<div><dt>{escape(label)}</dt><dd>{escape(text)}{note}</dd></div>')
+    budget = intent.get("budget")
+    fields.append('<div><dt>Budget</dt><dd>' + (f'NZD {budget:,.2f}' if isinstance(budget, (int, float)) else 'Not specified') + '</dd></div>')
+    add("Expected Traffic", intent.get("traffic_expectation"), "traffic_level")
+    add("Event", intent.get("occasion"))
+    add("Category", intent.get("category_preference"), "category")
+    for kind, label in (("soft_preferences", "Shelf-life preference"), ("hard_constraints", "Shelf-life constraint")):
+        for item in intent.get(kind) or []:
+            if isinstance(item, dict) and item.get("type") == "SHELF_LIFE":
+                add(label, item.get("value"), "shelf_life_preference")
+    st.markdown('<section class="understanding-compact"><h2>AI Understanding</h2>'
+                '<dl class="intent-fields">' + ''.join(fields) + '</dl></section>', unsafe_allow_html=True)
+    if context.get("AIAnalysisStatus") == "fallback":
+        st.caption("Understanding uses rules fallback; model interpretation was unavailable.")
 
 
 def render_v2_procurement_strategy(strategy: dict[str, Any], retry_count: int = 0) -> None:
@@ -1151,7 +1077,7 @@ def render_v2_runtime_status(
     intent = structured_intent or {}
     intent_items = [
         ("Objective", intent.get("objective") or "Not provided"),
-        ("Budget", "No budget" if intent.get("budget") is None else f"NZD {intent['budget']}"),
+        ("Budget", "Not specified" if intent.get("budget") is None else f"NZD {intent['budget']}"),
         ("Traffic", intent.get("traffic_expectation") or "Not provided"),
         ("Occasion", intent.get("occasion") or "NONE"),
         ("Categories", ", ".join(intent.get("category_preference") or []) or "None"),
@@ -1224,53 +1150,99 @@ def render_v2_product_decisions(
     )
 
 
-def render_v2_purchase_plan(
-    plan: list[dict[str, Any]],
-    optimizer_result: dict[str, Any],
-    validation_result: dict[str, Any],
-) -> None:
-    if validation_result.get("status") != "PASS" or validation_result.get("valid") is not True:
-        violation_codes = ", ".join(
-            str(item.get("code") or "UNKNOWN")
-            for item in validation_result.get("violations", [])
-        ) or "UNKNOWN"
-        st.error(
-            "V2 validation failed. No final purchase plan is available. "
-            f"Violations: {violation_codes}."
-        )
-        return
+def _display_value(value: Any, money: bool = False) -> str:
+    if value is None or value == "":
+        return "—"
+    return f"NZD {float(value):,.2f}" if money else escape(str(value))
 
-    rows = "".join(
-        '<tr>'
-        f'<td>{escape(str(item.get("product_name") or item.get("candidate_id") or ""))}</td>'
-        f'<td>{int(item.get("final_qty", 0))}</td>'
-        f'<td>{escape(str(item.get("unit") or ""))}</td>'
-        f'<td>NZD {float(item.get("unit_cost", 0)):.2f}</td>'
-        f'<td style="font-weight:700;">NZD {float(item.get("estimated_cost", 0)):.2f}</td>'
-        f'<td><span class="priority-badge">{escape(str(item.get("priority") or ""))}</span></td>'
-        '</tr>'
-        for item in plan
-    )
+
+def _inline_reasons(item: dict[str, Any]) -> str:
+    """Display existing evidence; short labels require an exact structured signal."""
+    from services.decision_trace import WhySelectedBuilder
+
+    labels = {
+        "USER_REQUESTED": "User requested",
+        "STOCKOUT_RISK=HIGH": "High stockout risk",
+        "STOCKOUT_RISK=MEDIUM": "Moderate stockout risk",
+        "PURCHASE_FREQUENCY=HIGH": "Frequent purchase",
+        "PURCHASE_FREQUENCY=MEDIUM": "Regular purchase history",
+        "PRODUCT_DEMAND_TREND=UP": "Demand increasing",
+        "BASELINE_SOURCE=STORE_EVENT": "Store event history",
+        "BASELINE_SOURCE=PEER_EVENT": "Peer event history",
+        "BASELINE_SOURCE=RECENT_STORE": "Recent store baseline",
+        "PEER_POPULARITY=HIGH": "Peer popularity",
+        "STORE_PURCHASE_HISTORY": "Store purchase history",
+    }
+    exact_labels = {WhySelectedBuilder.EXACT_REASONS[signal]: label
+                    for signal, label in labels.items()
+                    if signal in (item.get("decision_signals") or [])}
+    reasons = list(dict.fromkeys(str(reason) for reason in (item.get("why_selected") or []) if reason))
+    if not reasons:
+        return '<span class="reason-unavailable">Evidence unavailable</span>'
+    visible = ''.join('<span class="reason-tag" title="' + escape(reason, quote=True) + '">'
+                      + escape(exact_labels.get(reason, reason)) + '</span>' for reason in reasons[:2])
+    more = ''
+    if len(reasons) > 2:
+        more = ('<details class="reason-more"><summary>+' + str(len(reasons) - 2)
+                + ' more</summary><ul>' + ''.join('<li>' + escape(reason) + '</li>' for reason in reasons[2:])
+                + '</ul></details>')
+    return '<div class="inline-reasons">' + visible + more + '</div>'
+
+
+def _plan_markup(plan: list[dict[str, Any]], total: Any, remaining: Any, budget: Any, validated: bool) -> str:
+    metrics = [("Budget", "Not specified" if budget is None else _display_value(budget, True)),
+               ("Plan Total", _display_value(total, True)),
+               ("Remaining", _display_value(remaining, True)), ("Products", str(len(plan)))]
+    summary = ''.join(f'<div class="procurement-summary-metric"><div class="metric-label">{label}</div><div class="metric-value">{value}</div></div>' for label, value in metrics)
+    rows = ''.join('<tr>' + ''.join(f'<td>{value}</td>' for value in [
+        _display_value(item.get("product_name") or item.get("candidate_id")),
+        _display_value(item.get("final_qty")), _display_value(item.get("unit")),
+        _display_value(item.get("unit_cost"), True), _display_value(item.get("priority")),
+        _display_value(item.get("estimated_cost"), True), _inline_reasons(item)]) + '</tr>' for item in plan)
     if not rows:
-        rows = '<tr><td colspan="6">No executable purchase quantities.</td></tr>'
-    status = "Validated" if validation_result.get("valid") else "Validation Failed"
-    total = float(optimizer_result.get("total_cost") or 0)
-    remaining = optimizer_result.get("remaining_budget")
-    remaining_text = "Not constrained" if remaining is None else f"NZD {float(remaining):.2f}"
-    st.markdown(
-        '<h2 class="section-heading" style="margin-top:1.5rem;">Final Purchase Plan</h2>'
-        '<div class="section-card procurement-report">'
-        '<div class="procurement-summary-grid">'
-        f'<div class="procurement-summary-metric primary"><div class="metric-label">Validation</div><div class="metric-value">{escape(status)}</div></div>'
-        f'<div class="procurement-summary-metric primary"><div class="metric-label">Total Investment</div><div class="metric-value highlight">NZD {total:.2f}</div></div>'
-        f'<div class="procurement-summary-metric"><div class="metric-label">Remaining Budget</div><div class="metric-value">{escape(remaining_text)}</div></div>'
-        f'<div class="procurement-summary-metric"><div class="metric-label">Products</div><div class="metric-value">{len(plan)}</div></div>'
-        '</div>'
-        '<table class="procurement-table">'
-        '<tr><th>Product</th><th>Qty</th><th>Unit</th><th>Unit Cost</th><th>Estimated Cost</th><th>Priority</th></tr>'
-        f'{rows}</table></div>',
-        unsafe_allow_html=True,
-    )
+        rows = '<tr><td colspan="7">No executable purchase quantities.</td></tr>'
+    return ('<section class="purchase-plan"><h2>Purchase Plan</h2>'
+            + ('<p class="validation-note">Validated</p>' if validated else '<p>Rules-based fallback · Validation result unavailable</p>')
+            + '<div class="procurement-summary-grid">' + summary + '</div>'
+            + '<div class="table-scroll" role="region" aria-label="Purchase products" tabindex="0"><table class="procurement-table">'
+            + '<thead><tr><th>Product</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Priority</th><th>Budget Used</th><th>Why Selected</th></tr></thead><tbody>'
+            + rows + '</tbody></table></div>'
+            + '</section>')
+
+
+def render_v2_purchase_plan(plan: list[dict[str, Any]], optimizer_result: dict[str, Any],
+                            validation_result: dict[str, Any], budget: float | None = None) -> None:
+    if validation_result.get("status") != "PASS" or validation_result.get("valid") is not True:
+        codes = ", ".join(str(item.get("code") or "UNKNOWN") for item in validation_result.get("violations", [])) or "Unavailable"
+        st.error("No final purchase plan is available. Validation failed or its result is missing. " + f"Details: {codes}.")
+        return
+    st.markdown(_plan_markup(plan, optimizer_result.get("total_cost"), optimizer_result.get("remaining_budget"), budget, True), unsafe_allow_html=True)
+
+
+def render_unvalidated_fallback_plan(plan: list[dict[str, Any]], budget: float | None) -> None:
+    # Map existing fields only; no priority inference, evidence generation, or validation claim.
+    displayed = [{"product_name": item.get("product"), "candidate_id": item.get("product_id"),
+                  "final_qty": item.get("quantity"), "unit": item.get("unit"),
+                  "unit_cost": item.get("unit_cost"), "priority": item.get("priority"),
+                  "estimated_cost": item.get("estimated_cost"), "why_selected": item.get("why")}
+                 for item in plan]
+    costs = [item.get("estimated_cost") for item in plan]
+    total = sum(costs) if all(isinstance(x, (int, float)) for x in costs) else None
+    st.markdown(_plan_markup(displayed, total, None, budget, False), unsafe_allow_html=True)
+
+
+def render_potential_opportunities(opportunities: list[dict[str, Any]] | None = None) -> None:
+    st.markdown('<section class="opportunities"><h2>Potential Opportunities</h2>', unsafe_allow_html=True)
+    if opportunities is None:
+        st.caption("A separate opportunity list is not available for this plan.")
+    elif not opportunities:
+        st.caption("No additional opportunities were returned outside this purchase plan.")
+    else:
+        for item in opportunities:
+            reasons = item.get("why") or []
+            st.markdown('<details class="evidence-row"><summary>' + escape(str(item.get("product") or "—"))
+                        + '</summary><ul>' + ''.join(f'<li>{escape(str(reason))}</li>' for reason in reasons) + '</ul></details>', unsafe_allow_html=True)
+    st.markdown('</section>', unsafe_allow_html=True)
 
 
 def _get_action_tag(strength: str, coverage_days: float | None) -> tuple[str, str]:

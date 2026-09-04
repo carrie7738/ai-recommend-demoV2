@@ -141,6 +141,13 @@ Sol 负责：
 
 ## 2. Prefer Luna for bounded execution tasks
 
+委派给 Luna 时默认使用：
+
+- model: `gpt-5.6-luna`
+- reasoning_effort: `max`
+
+除非用户明确指定其他推理强度，否则所有 Luna 子任务均使用 `max`。
+
 任务满足以下特征时，优先委派给 `gpt-5.6-luna`：
 
 - 规格明确、风险低、范围局部且容易验证

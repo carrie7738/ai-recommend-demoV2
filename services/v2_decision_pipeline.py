@@ -82,6 +82,7 @@ class V2DecisionPipeline:
                 prepared["safe_decision_context"]["structured_intent"],
                 optimizer_result,
                 validation_result["violations"],
+                as_of_date=effective_as_of_date,
             )
             if repaired.get("repair_applied"):
                 repair_attempts.append({
@@ -127,6 +128,7 @@ class V2DecisionPipeline:
                     prepared["safe_decision_context"]["structured_intent"],
                     optimizer_result,
                     validation_result["violations"],
+                    as_of_date=effective_as_of_date,
                 )
                 if repaired.get("repair_applied"):
                     repair_attempts.append({

@@ -23,6 +23,7 @@ class HardValidator:
         structured_intent: dict[str, Any],
         optimizer_result: dict[str, Any],
         violations: list[dict[str, Any]],
+        as_of_date: Any | None = None,
     ) -> dict[str, Any]:
         """Repair executable quantities without changing candidate rationale or AI priority."""
         repaired = deepcopy(optimizer_result)
@@ -37,7 +38,7 @@ class HardValidator:
             return repaired
 
         products = self._indexed_rows(workbook["Product"], "ProductId")
-        supply = self._indexed_rows(workbook["SupplyAvailability"], "ProductId")
+        supply = self._supply_rows(workbook["SupplyAvailability"], as_of_date)
         actions: list[dict[str, Any]] = []
         plan = repaired.get("purchase_plan", [])
 
@@ -77,7 +78,7 @@ class HardValidator:
                     str(item.get("candidate_id") or ""),
                 ),
             )
-            total = self._plan_total(plan, products)
+            total = self._product_plan_total(plan, products)
             for item in reduction_candidates:
                 while total > budget_value + 1e-9 and int(item.get("final_qty") or 0) > 0:
                     candidate_id = str(item.get("candidate_id") or "")
@@ -99,10 +100,11 @@ class HardValidator:
                         "from_qty": quantity,
                         "to_qty": target,
                     })
-                    total = self._plan_total(plan, products)
+                    total = self._product_plan_total(plan, products)
 
         unallocated = repaired.setdefault("unallocated_candidates", [])
         retained = []
+        metadata_changed = False
         for item in plan:
             if int(item.get("final_qty") or 0) <= 0:
                 unallocated.append({
@@ -111,14 +113,29 @@ class HardValidator:
                 })
                 continue
             candidate_id = str(item.get("candidate_id") or "")
-            unit_cost = self._unit_cost(item, products.get(candidate_id) or {})
-            item["estimated_cost"] = round(int(item["final_qty"]) * unit_cost, 2)
+            product = products.get(candidate_id) or {}
+            unit_cost = self._trusted_unit_cost(product)
+            if self._metadata_value_differs(item.get("unit_cost"), unit_cost):
+                metadata_changed = True
+            item["unit_cost"] = unit_cost
+            estimated_cost = round(int(item["final_qty"]) * unit_cost, 2)
+            if self._metadata_value_differs(item.get("estimated_cost"), estimated_cost):
+                metadata_changed = True
+            item["estimated_cost"] = estimated_cost
             retained.append(item)
         repaired["purchase_plan"] = retained
-        repaired["total_cost"] = round(self._plan_total(retained, products), 2)
-        repaired["remaining_budget"] = (
-            None if budget is None else round(max(float(budget) - repaired["total_cost"], 0.0), 2)
+        total_cost = round(self._product_plan_total(retained, products), 2)
+        remaining_budget = (
+            None if budget is None else round(max(float(budget) - total_cost, 0.0), 2)
         )
+        if self._metadata_value_differs(repaired.get("total_cost"), total_cost):
+            metadata_changed = True
+        repaired["total_cost"] = total_cost
+        if self._metadata_value_differs(repaired.get("remaining_budget"), remaining_budget):
+            metadata_changed = True
+        repaired["remaining_budget"] = remaining_budget
+        if metadata_changed:
+            actions.append({"type": "COST_METADATA_REPAIR"})
         repaired["repair_applied"] = bool(actions)
         repaired["repair_actions"] = actions
         return repaired
@@ -283,18 +300,6 @@ class HardValidator:
         return str(value).strip().casefold() in {"true", "1", "yes", "y"}
 
     @classmethod
-    def _plan_total(
-        cls,
-        plan: list[dict[str, Any]],
-        products: dict[str, dict[str, Any]],
-    ) -> float:
-        return sum(
-            int(item.get("final_qty") or 0)
-            * cls._unit_cost(item, products.get(str(item.get("candidate_id") or "")) or {})
-            for item in plan
-        )
-
-    @classmethod
     def _product_plan_total(
         cls,
         plan: list[dict[str, Any]],
@@ -303,11 +308,27 @@ class HardValidator:
         """Recompute cost from trusted product master data, independent of optimizer totals."""
         return sum(
             int(item.get("final_qty") or 0)
-            * cls._number(
-                (products.get(str(item.get("candidate_id") or "")) or {}).get("AvgCost", 0),
-                "AvgCost",
-            )
+            * cls._trusted_unit_cost(products.get(str(item.get("candidate_id") or "")) or {})
             for item in plan
+        )
+
+    @classmethod
+    def _trusted_unit_cost(cls, product: dict[str, Any]) -> float:
+        return cls._number(product.get("AvgCost", 0), "AvgCost")
+
+    @staticmethod
+    def _metadata_value_differs(value: Any, expected: float | None) -> bool:
+        if expected is None:
+            return value is not None
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return True
+        return not math.isfinite(parsed) or not math.isclose(
+            parsed,
+            expected,
+            rel_tol=0.0,
+            abs_tol=1e-9,
         )
 
     @classmethod
@@ -324,12 +345,3 @@ class HardValidator:
                 prepared["LastUpdated"].notna() & (prepared["LastUpdated"] <= as_of)
             ].sort_values("LastUpdated")
         return cls._indexed_rows(prepared, "ProductId")
-
-    @staticmethod
-    def _unit_cost(item: dict[str, Any], product: dict[str, Any]) -> float:
-        value = item.get("unit_cost", product.get("AvgCost", 0))
-        try:
-            parsed = float(value)
-        except (TypeError, ValueError):
-            return 0.0
-        return max(parsed, 0.0) if math.isfinite(parsed) else 0.0

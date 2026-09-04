@@ -9,3 +9,4 @@ __pycache__/
 # Local recovery copies and repeatable runtime evaluation artifacts.
 data/backups/
 outputs/ab-evaluation/
+outputs/deepseek-acceptance/

@@ -94,7 +94,7 @@ class V2UIRenderTests(unittest.TestCase):
         )
 
         html = markdown.call_args.args[0]
-        self.assertIn("Final Purchase Plan", html)
+        self.assertIn("Purchase Plan", html)
         self.assertIn("Validated", html)
         self.assertIn("Core Product", html)
         self.assertIn("NZD 12.00", html)

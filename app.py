@@ -20,10 +20,9 @@ from services.ui import (
     render_ai_request_section,
     render_ai_understanding,
     render_v2_runtime_status,
-    render_procurement_plan_report,
-    render_growth_section,
+    render_unvalidated_fallback_plan,
+    render_potential_opportunities,
     render_v2_procurement_strategy,
-    render_v2_product_decisions,
     render_v2_purchase_plan,
 )
 
@@ -182,7 +181,8 @@ def main() -> None:
                     workbook,
                     store_resolution.customer_id,
                 )
-                parsed_intent = intent_parser.parse_intent(request, store_context=store_context)
+                with st.spinner("Understanding your request..."):
+                    parsed_intent = intent_parser.parse_intent(request, store_context=store_context)
                 st.session_state["parsed_intent"] = parsed_intent
                 st.session_state["user_request"] = request
                 st.session_state["v2_result"] = None
@@ -230,16 +230,19 @@ def main() -> None:
         if request_submitted:
             if not request.strip():
                 st.warning("Please describe your procurement request before generating a plan.")
+                return
             else:
                 store_resolution = store_resolver.resolve(workbook, request)
                 if not store_resolution.is_found:
                     st.warning(store_resolution.message)
+                    return
                 else:
                     store_context = store_resolver.build_store_context(
                         workbook,
                         store_resolution.customer_id,
                     )
-                    parsed_intent = intent_parser.parse_intent(request, store_context=store_context)
+                    with st.spinner("Understanding your request..."):
+                        parsed_intent = intent_parser.parse_intent(request, store_context=store_context)
                     st.session_state["parsed_intent"] = parsed_intent
                     st.session_state["user_request"] = request
                     st.session_state["v2_result"] = None
@@ -253,7 +256,7 @@ def main() -> None:
                     )
                     st.rerun()
 
-        render_ai_understanding(context)
+        render_ai_understanding(context_override or {})
         model_client = AIClient()
         if model_client.is_available and st.session_state.get("v2_result") is None and not st.session_state.get("v2_error"):
             try:
@@ -262,18 +265,19 @@ def main() -> None:
                     decision_layer=AIDecisionLayer(ai_client=model_client),
                 )
                 user_request = str(st.session_state.get("user_request") or context.get("UserInput") or "")
-                st.session_state["v2_result"] = v2_pipeline.run(
-                    workbook=workbook,
-                    customer_id=str(context["CustomerId"]),
-                    user_input=user_request,
-                    as_of_date=resolve_v2_as_of_date(
-                        workbook,
-                        user_request,
-                        str(context["CustomerId"]),
-                        context_override,
-                    ),
-                    parsed_intent=context_override,
-                )
+                with st.spinner("Building purchase plan..."):
+                    st.session_state["v2_result"] = v2_pipeline.run(
+                        workbook=workbook,
+                        customer_id=str(context["CustomerId"]),
+                        user_input=user_request,
+                        as_of_date=resolve_v2_as_of_date(
+                            workbook,
+                            user_request,
+                            str(context["CustomerId"]),
+                            context_override,
+                        ),
+                        parsed_intent=context_override,
+                    )
                 st.session_state["pipeline_status"] = {
                     key: st.session_state["v2_result"].get(key)
                     for key in (
@@ -293,43 +297,29 @@ def main() -> None:
 
         v2_result = st.session_state.get("v2_result")
         if v2_result:
-            render_v2_runtime_status(
-                model_client.provider_name,
-                model_client.settings.model,
-                st.session_state.get("pipeline_status"),
-                v2_result.get("safe_decision_context", {}).get("structured_intent"),
-                v2_result.get("intent", {}).get("AIAnalysisStatus"),
-            )
-            if v2_result.get("v2_status") == "SUCCESS":
-                st.success("Pipeline: V2 SUCCESS")
-            else:
-                st.error("Pipeline: V2 FAILED. No V2 final purchase plan was produced.")
-            render_v2_procurement_strategy(
-                v2_result["ai_decision"]["procurement_strategy"],
-                v2_result["retry_count"],
-            )
-            render_v2_product_decisions(
-                v2_result["decision_trace"]["candidate_decisions"],
-                v2_result["final_purchase_plan"],
-            )
+            structured_intent = v2_result.get("safe_decision_context", {}).get("structured_intent") or {}
             render_v2_purchase_plan(
                 v2_result["final_purchase_plan"],
                 v2_result["optimizer_result"],
                 v2_result["validation_result"],
+                budget=structured_intent.get("budget"),
             )
-        else:
-            render_v2_runtime_status(
-                model_client.provider_name,
-                model_client.settings.model,
-                st.session_state.get("pipeline_status"),
-                (context_override or {}).get("StructuredIntent"),
-                (context_override or {}).get("AIAnalysisStatus"),
-            )
-            if st.session_state.get("v2_error"):
-                st.error(
-                    "V2 FAILED — FALLBACK → V1. "
-                    f"Reason: {st.session_state['v2_error']}"
+            render_potential_opportunities()
+            with st.expander("Technical details", expanded=False):
+                render_v2_runtime_status(
+                    model_client.provider_name,
+                    model_client.settings.model,
+                    st.session_state.get("pipeline_status"),
+                    structured_intent,
+                    v2_result.get("intent", {}).get("AIAnalysisStatus"),
                 )
+                render_v2_procurement_strategy(
+                    v2_result["ai_decision"]["procurement_strategy"],
+                    v2_result["retry_count"],
+                )
+        else:
+            if st.session_state.get("v2_error"):
+                st.warning("The AI purchase plan could not be generated. A rules-based fallback is shown below; its validation result is unavailable.")
             # V1 is deliberately lazy: it is executed only after the original
             # V2 failure has been captured and surfaced above.
             fallback_result = get_recommendation_engine().generate_session_recommendations(
@@ -344,12 +334,23 @@ def main() -> None:
                 if fallback_context.get("Budget") is not None
                 else None
             )
-            render_procurement_plan_report(
+            render_unvalidated_fallback_plan(
                 fallback_result["procurement_plan"],
                 budget,
-                fallback_context,
             )
-            render_growth_section(fallback_result["growth"])
+            selected_ids = {item["product_id"] for item in fallback_result["procurement_plan"]}
+            render_potential_opportunities([
+                item for item in fallback_result["growth"]
+                if item.get("product_id") and item["product_id"] not in selected_ids
+            ])
+            with st.expander("Technical details", expanded=False):
+                render_v2_runtime_status(
+                    model_client.provider_name,
+                    model_client.settings.model,
+                    st.session_state.get("pipeline_status"),
+                    (context_override or {}).get("StructuredIntent"),
+                    (context_override or {}).get("AIAnalysisStatus"),
+                )
 
     except ExcelLoaderError as exc:
         logger.exception("Failed to load workbook.")

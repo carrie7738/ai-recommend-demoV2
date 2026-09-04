@@ -245,7 +245,7 @@ Top-level JSON fields:
 - missing_information: array
 - recommendation_readiness: object
 - structured_intent: object
-- store_context: object
+- store_context: exactly {}, reserved for trusted local enrichment; never copy profile fields here
 - store_considerations: array of up to 3 short sentences
 
 business_intent:
@@ -309,7 +309,7 @@ Rules:
 - High-risk missing information should set should_ask_follow_up=true but can_generate_recommendation must remain true.
 - If the request is vague and lacks business goal, demand driver, category and budget, use this exact follow-up question: "Are you optimizing for stockout prevention, budget control, or growth?"
 - Otherwise, set should_ask_follow_up to false and continue recommendations.
-- A trusted store profile may be supplied in a separate system message. Use it to interpret the request, but do not alter its identity fields.
+- A trusted store profile may be supplied in a separate system message. Use it to interpret the request. Return store_context as exactly {}; the application attaches the trusted profile locally. Only structured_intent.store_id may reference its CustomerId.
 
 JSON output example (the field names and nesting are mandatory; values are illustrative only):
 {"budget":null,"traffic_level":"NORMAL","promotion_flag":false,"shelf_life_preference":"NORMAL","preferred_category":null,"excluded_category":null,"time_range":"unknown","expected_intent":"General procurement planning.","business_intent":{"primary_intent":"general_planning","secondary_intents":[],"decision_type":"planning","urgency":"low","intent_summary":"General procurement planning."},"decision_signals":{"expected_demand_change":"unknown","demand_driver":"unknown","stockout_sensitivity":"medium","waste_sensitivity":"medium","price_sensitivity":"medium","growth_appetite":"medium","budget_strictness":"none","substitution_allowed":false},"uncertainty":{"overall_confidence":0.5,"field_sources":{"budget":"missing","traffic_level":"missing","promotion_flag":"missing","shelf_life_preference":"missing","category":"missing","time_horizon":"missing"},"low_confidence_fields":[]},"missing_information":[],"recommendation_readiness":{"can_generate_recommendation":true,"should_ask_follow_up":false,"confidence_level":"medium","confidence_score":0.5,"confidence_drivers":[],"confidence_risks":[],"follow_up_question":""},"structured_intent":{"store_id":"","budget":null,"objective":"GENERAL_PLANNING","traffic_expectation":"NORMAL","occasion":"NONE","category_preference":[],"hard_constraints":[],"soft_preferences":[],"explicit_products":[]},"store_context":{},"store_considerations":[]}
@@ -345,7 +345,8 @@ class IntentParser:
                 "role": "system",
                 "content": (
                     "Trusted store context from the internal customer master. "
-                    "Do not change these identity fields: "
+                    "Use this profile as context only. Return store_context as exactly {}; "
+                    "do not echo these profile fields into that output object: "
                     f"{json.dumps(store_context or {}, ensure_ascii=True)}"
                 ),
             },

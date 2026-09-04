@@ -130,6 +130,127 @@ class HardValidatorTests(unittest.TestCase):
         self.assertEqual(repaired["total_cost"], 12.0)
         self.assertEqual(revalidated["status"], "PASS")
 
+    def test_repair_uses_same_as_of_supply_snapshot_as_validate(self) -> None:
+        validator = HardValidator()
+        data = validator_workbook()
+        data["SupplyAvailability"] = pd.DataFrame([
+            {"ProductId": "P1", "AvailableStock": 100, "LastUpdated": "2026-06-03"},
+            {"ProductId": "P1", "AvailableStock": 2, "LastUpdated": "2026-06-02"},
+            {"ProductId": "P1", "AvailableStock": 20, "LastUpdated": "2026-05-30"},
+            {"ProductId": "P2", "AvailableStock": 4, "LastUpdated": "2026-06-02"},
+        ])
+        original = {
+            "purchase_plan": [{
+                "candidate_id": "P1",
+                "final_qty": 18,
+                "sales_unit": 6,
+                "unit_cost": 2.0,
+                "estimated_cost": 36.0,
+            }],
+            "unallocated_candidates": [],
+            "total_cost": 36.0,
+        }
+        failed = validator.validate(
+            data,
+            {"budget": None},
+            self.candidates,
+            ai_decision(),
+            original,
+            as_of_date="2026-06-02",
+        )
+
+        repaired = validator.repair(
+            data,
+            {"budget": None},
+            original,
+            failed["violations"],
+            as_of_date="2026-06-02",
+        )
+        revalidated = validator.validate(
+            data,
+            {"budget": None},
+            self.candidates,
+            ai_decision(),
+            repaired,
+            as_of_date="2026-06-02",
+        )
+
+        self.assertEqual(repaired["purchase_plan"][0]["final_qty"], 2)
+        self.assertEqual(revalidated["status"], "PASS")
+
+    def test_repair_reconciles_forged_cost_metadata_using_product_avg_cost(self) -> None:
+        validator = HardValidator()
+        for forged_unit_cost in (0.01, 100.0):
+            with self.subTest(forged_unit_cost=forged_unit_cost):
+                original = {
+                    "purchase_plan": [{
+                        "candidate_id": "P1",
+                        "final_qty": 12,
+                        "sales_unit": 6,
+                        "unit_cost": forged_unit_cost,
+                        "estimated_cost": round(12 * forged_unit_cost, 2),
+                    }],
+                    "unallocated_candidates": [],
+                    "total_cost": round(12 * forged_unit_cost, 2),
+                    "remaining_budget": 0.0,
+                }
+                failed = validator.validate(
+                    validator_workbook(),
+                    {"budget": 20.0},
+                    self.candidates,
+                    ai_decision(),
+                    original,
+                )
+
+                repaired = validator.repair(
+                    validator_workbook(),
+                    {"budget": 20.0},
+                    original,
+                    failed["violations"],
+                )
+                revalidated = validator.validate(
+                    validator_workbook(),
+                    {"budget": 20.0},
+                    self.candidates,
+                    ai_decision(),
+                    repaired,
+                )
+                item = repaired["purchase_plan"][0]
+                self.assertEqual(item["final_qty"], 6)
+                self.assertEqual(item["unit_cost"], 2.0)
+                self.assertEqual(item["estimated_cost"], 12.0)
+                self.assertEqual(repaired["total_cost"], 12.0)
+                self.assertEqual(repaired["remaining_budget"], 8.0)
+                self.assertEqual(revalidated["status"], "PASS")
+
+    def test_repair_marks_metadata_only_correction_as_applied(self) -> None:
+        validator = HardValidator()
+        original = {
+            "purchase_plan": [{
+                "candidate_id": "P1",
+                "final_qty": 6,
+                "sales_unit": 6,
+                "unit_cost": 100.0,
+                "estimated_cost": 600.0,
+            }],
+            "unallocated_candidates": [],
+            "total_cost": 600.0,
+            "remaining_budget": None,
+        }
+
+        repaired = validator.repair(
+            validator_workbook(),
+            {"budget": None},
+            original,
+            [{"code": "SALES_UNIT_VIOLATION", "repairable_locally": True}],
+        )
+
+        self.assertTrue(repaired["repair_applied"])
+        self.assertEqual(repaired["purchase_plan"][0]["final_qty"], 6)
+        self.assertEqual(repaired["purchase_plan"][0]["unit_cost"], 2.0)
+        self.assertEqual(repaired["purchase_plan"][0]["estimated_cost"], 12.0)
+        self.assertEqual(repaired["total_cost"], 12.0)
+
     def test_nonrepairable_violation_remains_failed(self) -> None:
         validator = HardValidator()
         original = {
@@ -410,6 +531,104 @@ class RetryPipelineTests(unittest.TestCase):
             [item["candidate_id"] for item in result["final_purchase_plan"]],
             ["P1"],
         )
+
+    def test_pipeline_passes_effective_as_of_to_both_retry_repair_points(self) -> None:
+        raw_candidates = optimizer_candidates("P1", "P2")
+        safe_candidates = [{
+            "candidate_id": item["candidate_id"],
+            "recommendation_type": item["recommendation_type"],
+            "candidate_source": item["candidate_source"],
+            "features": {"baseline_source": "RECENT_STORE"},
+            "signals": ["STOCKOUT_RISK=HIGH"],
+        } for item in raw_candidates]
+        effective_date = pd.Timestamp("2026-12-10")
+
+        class Preparation:
+            @staticmethod
+            def prepare(*args, **kwargs):
+                return {
+                    "intent": {},
+                    "effective_as_of_date": effective_date,
+                    "candidate_pool": {
+                        "eligible_candidates": raw_candidates,
+                        "rejected_candidates": [],
+                    },
+                    "safe_decision_context": {
+                        "structured_intent": {
+                            "objective": "PREVENT_STOCKOUT",
+                            "occasion": "NONE",
+                            "traffic_expectation": "NORMAL",
+                            "budget": 12.0,
+                        },
+                        "candidates": safe_candidates,
+                    },
+                }
+
+        class DecisionLayer:
+            retry_calls = 0
+
+            @staticmethod
+            def decide(context):
+                return ai_decision()
+
+            def retry_decision(self, context, previous, feedback):
+                self.retry_calls += 1
+                return json.loads(json.dumps(previous))
+
+        class TwoInvalidResultsOptimizer:
+            calls = 0
+
+            @classmethod
+            def optimize(cls, **kwargs):
+                cls.calls += 1
+                quantity = 25 if cls.calls == 1 else 7
+                return {
+                    "purchase_plan": [{
+                        "candidate_id": "P1",
+                        "final_qty": quantity,
+                        "sales_unit": 6,
+                        "unit_cost": 2.0,
+                        "estimated_cost": quantity * 2.0,
+                    }],
+                    "unallocated_candidates": (
+                        [{"candidate_id": "P2", "reason": "BUDGET_CONFLICT"}]
+                        if cls.calls == 1 else []
+                    ),
+                    "total_cost": quantity * 2.0,
+                    "remaining_budget": 0.0,
+                }
+
+        class RecordingValidator(HardValidator):
+            def __init__(self):
+                super().__init__()
+                self.validate_dates = []
+                self.repair_dates = []
+
+            def validate(self, *args, **kwargs):
+                self.validate_dates.append(kwargs.get("as_of_date"))
+                return super().validate(*args, **kwargs)
+
+            def repair(self, *args, **kwargs):
+                self.repair_dates.append(kwargs.get("as_of_date"))
+                return super().repair(*args, **kwargs)
+
+        layer = DecisionLayer()
+        validator = RecordingValidator()
+        result = V2DecisionPipeline(
+            preparation=Preparation(),
+            decision_layer=layer,
+            optimizer=TwoInvalidResultsOptimizer(),
+            validator=validator,
+        ).run(
+            optimizer_workbook(),
+            "C1",
+            "Protect priority stock.",
+            "2026-06-02",
+        )
+
+        self.assertEqual(layer.retry_calls, 1)
+        self.assertEqual(validator.repair_dates, [effective_date, effective_date])
+        self.assertTrue(result["validation_result"]["valid"])
 
 
 if __name__ == "__main__":

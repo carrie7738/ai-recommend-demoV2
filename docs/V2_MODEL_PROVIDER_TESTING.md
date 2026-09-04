@@ -1,5 +1,33 @@
 # V2 Model Provider and A/B Testing
 
+## Active scope and current evidence (2026-09-04)
+
+The user has paused model A/B testing. DeepSeek is the only active acceptance provider;
+Gemini API checks and cross-provider comparisons are deferred. Existing adapters are retained.
+
+- Baseline: local `aad1da2`; subsequent working-tree changes are not a new committed checkpoint.
+- DeepSeek smoke passed with actual model `deepseek-v4-flash`, no fallback or retry.
+  Intent: 7114.1 ms, 1645 input / 583 output tokens; Decision: 2088.4 ms,
+  1004 input / 169 output tokens. Both API/JSON checks succeeded; local Intent schema and
+  budget=1000 / traffic=HIGH semantics passed; Decision schema/semantic validation passed.
+  This smoke ran before the current Intent prompt correction and does not pass a store profile.
+- Initial sandbox execution failed with a connection error and correctly reported FAIL/fallback.
+  The successful smoke was run with approved network access.
+- The first real browser run for C001 returned HTTP 200 but Intent schema validation failed:
+  the model echoed trusted profile keys into `store_context`, which only accepts `{}`.
+  The UI exposed `Intent: fallback` and `Rules Fallback`; its V2 Decision/Validator succeeded
+  with 12 discovery lines, NZD 242 total, NZD 758 remaining. This is **not** an all-live pass.
+- The prompt now explicitly reserves `store_context: {}` for local trusted enrichment.
+  Local Intent/UI tests pass. Real confirmation of that prompt correction is pending.
+- Automatic approval review rejected the browser re-generation because it would send local
+  store-profile fields to DeepSeek. Explicit authorization for those fields has been requested.
+  Profile-bearing six-scenario and browser calls remain paused pending that answer.
+- C051 harness scenarios and C001 browser requests use different trusted store identities.
+  They must be reported separately; see `V2_REMAINING_TASKS.md`.
+
+The historical statuses below are from earlier runs. They are not acceptance evidence for
+`aad1da2` or the current working tree. Gemini quota availability has not been rechecked.
+
 ## Provider boundary
 
 Business services call `AIClient`, which delegates to a configured provider adapter. New providers
@@ -59,7 +87,7 @@ The Streamlit page must show Model & Pipeline Status with Provider, Model, Struc
 status, Intent source, and Fallback state. A failed Validator must not render a Final Purchase Plan.
 If V2 fails and V1 fallback is shown, the UI must retain `V2 FAILED` and display the fallback reason.
 
-## Current external blocker
+## Historical external blocker (not rechecked)
 
 The configured Gemini project returned `RESOURCE_EXHAUSTED` after reaching the
 `gemini-3.6-flash` free-tier request limit of 20. Cases 4–6 and post-fix retests for Cases 2–3 remain
