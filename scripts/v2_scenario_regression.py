@@ -39,6 +39,7 @@ SCENARIO_DECISION_PATH_BY_SLUG = {
 from services.ai_client import AIClient  # noqa: E402
 from services.ai_decision import AIDecisionLayer  # noqa: E402
 from services.intent_parser import IntentParser  # noqa: E402
+from services.local_optimizer import LocalOptimizer  # noqa: E402
 from services.v2_decision_pipeline import V2DecisionPipeline  # noqa: E402
 from services.v2_preparation import V2PreparationPipeline  # noqa: E402
 from scripts.model_smoke_test import _settings_for  # noqa: E402
@@ -172,6 +173,7 @@ def load_scenario_bindings(
 def _scenario_contract_violations(
     scenario_slug: str,
     result: dict,
+    workbook: dict[str, pd.DataFrame] | None = None,
 ) -> list[str]:
     """Evaluate known Demo semantics without turning them into runtime business rules."""
     violations: list[str] = []
@@ -206,7 +208,7 @@ def _scenario_contract_violations(
         violations.append("FALLBACK_TRIGGERED")
 
     final_plan = result.get("final_purchase_plan", [])
-    if not final_plan:
+    if not final_plan and scenario_slug != "05_fruit_focus":
         violations.append("FINAL_PLAN_EMPTY")
     budget = structured.get("budget")
     total_cost = result["optimizer_result"].get("total_cost")
@@ -276,20 +278,60 @@ def _scenario_contract_violations(
             for candidate_id, row in features.items()
             if row.get("category_relevance") == "LOW"
         }
-        if not selected_ids.intersection(high_relevance):
-            violations.append("PREFERRED_CATEGORY_NOT_SELECTED")
+        # Soft preference is a model decision, not permission to overstock.
+        recommended_ids = {
+            candidate_id for candidate_id, decision in decisions.items()
+            if decision.get("recommended")
+        }
+        if not recommended_ids.intersection(high_relevance):
+            violations.append("PREFERRED_CATEGORY_NOT_RECOMMENDED")
         high_rate = (
-            len(selected_ids.intersection(high_relevance)) / len(high_relevance)
+            len(recommended_ids.intersection(high_relevance)) / len(high_relevance)
             if high_relevance else 0.0
         )
         low_rate = (
-            len(selected_ids.intersection(low_relevance)) / len(low_relevance)
+            len(recommended_ids.intersection(low_relevance)) / len(low_relevance)
             if low_relevance else 0.0
         )
         if high_rate < low_rate:
             violations.append(
-                f"PREFERRED_CATEGORY_SELECTION_RATE_LOWER high={high_rate:.3f}, low={low_rate:.3f}"
+                f"PREFERRED_CATEGORY_RECOMMENDATION_RATE_LOWER high={high_rate:.3f}, low={low_rate:.3f}"
             )
+        # Require workbook evidence for zero-gap exemptions. An unallocated
+        # reason alone is not sufficient evidence that a purchase was unnecessary.
+        if workbook is None:
+            violations.append("PREFERRED_CATEGORY_INVENTORY_EVIDENCE_MISSING")
+        else:
+            optimizer = LocalOptimizer()
+            zero_gap_preferred: set[str] = set()
+            as_of = pd.Timestamp(result["effective_as_of_date"])
+            candidates = {
+                row["candidate_id"]: row
+                for row in result["candidate_pool"]["eligible_candidates"]
+            }
+            unallocated = {
+                row["candidate_id"]: row.get("reason")
+                for row in result["optimizer_result"].get("unallocated_candidates", [])
+            }
+            for candidate_id in sorted(high_relevance):
+                candidate = {**candidates[candidate_id], "features": features[candidate_id]}
+                _, baseline = optimizer._demand_baseline(
+                    workbook, structured["store_id"], candidate_id, structured,
+                    candidate, as_of, int(candidate["sales_unit"]),
+                )
+                stock = optimizer._current_stock(
+                    workbook["Inventory"], structured["store_id"], candidate_id, as_of,
+                )
+                if baseline <= stock:
+                    zero_gap_preferred.add(candidate_id)
+                    if candidate_id in selected_ids:
+                        violations.append(f"ZERO_GAP_PREFERRED_CATEGORY_PURCHASED={candidate_id}")
+                    if candidate_id in recommended_ids and unallocated.get(candidate_id) != "NO_EXECUTABLE_QUANTITY":
+                        violations.append(f"ZERO_GAP_PREFERRED_CATEGORY_REASON_MISSING={candidate_id}")
+                elif candidate_id in recommended_ids and candidate_id not in selected_ids:
+                    violations.append(f"POSITIVE_GAP_PREFERRED_CATEGORY_NOT_SELECTED={candidate_id}")
+            if not final_plan and not recommended_ids.issubset(zero_gap_preferred):
+                violations.append("FINAL_PLAN_EMPTY")
     elif scenario_slug == "06_no_budget":
         if result.get("optimizer_result", {}).get("remaining_budget") is not None:
             violations.append("NO_BUDGET_MODE_HAS_REMAINING_BUDGET")
@@ -344,7 +386,7 @@ def main() -> int:
                 scenario["as_of_date"],
             )
             trace = result["decision_trace"]
-            contract_violations = _scenario_contract_violations(scenario["slug"], result)
+            contract_violations = _scenario_contract_violations(scenario["slug"], result, workbook)
             reports.append({
                 "case": scenario["slug"],
                 "scenario_id": scenario["scenario_id"],

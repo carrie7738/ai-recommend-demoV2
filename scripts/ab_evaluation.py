@@ -110,8 +110,9 @@ def _record_for_result(
     run_number: int,
     result: dict[str, Any],
     metrics: list[dict[str, Any]],
+    workbook: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, Any]:
-    violations = _scenario_contract_violations(scenario["slug"], result)
+    violations = _scenario_contract_violations(scenario["slug"], result, workbook)
     structured = result["safe_decision_context"]["structured_intent"]
     final_plan = result.get("final_purchase_plan", [])
     return {
@@ -203,6 +204,7 @@ def run_evaluation(
                         run_number,
                         result,
                         recorder.call_metrics,
+                        workbook,
                     ))
                 except Exception as exc:
                     records.append({

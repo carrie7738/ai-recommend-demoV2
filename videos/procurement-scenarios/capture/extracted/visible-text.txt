@@ -1,6 +1,0 @@
-[span] Deploy
-[h1] AI Smart Procurement Assistant
-[div] AI Procurement Request
-[div] Include your store name or ID, then describe demand, budget, promotion, or shelf-life needs.
-[p] Request
-[p] Generate procurement plan

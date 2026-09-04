@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import unittest
 
-from services.intent_parser import IntentParser
+from services.intent_parser import INTENT_JSON_SCHEMA, IntentParser
 
 
 class OfflineAIClient:
@@ -154,6 +154,27 @@ class IntentParserFallbackTests(unittest.TestCase):
         self.assertIn("user_request:", client.messages[-1]["content"])
         self.assertIn("Budget NZD 500 and high traffic", client.messages[-1]["content"])
         self.assertIn("not the illustrative JSON example", client.messages[-1]["content"])
+
+    def test_json_object_prompt_objective_choices_match_local_schema(self) -> None:
+        # DeepSeek's JSON-object wire mode does not receive the JSON Schema.
+        # Its prompt must advertise the same objective enum that we validate.
+        class RecordingClient(LiveAIClient):
+            def chat_completion_json(self, messages):
+                self.messages = messages
+                return super().chat_completion_json(messages)
+
+        client = RecordingClient()
+        IntentParser(ai_client=client).parse_intent("Prevent stockouts. Budget NZD 500.")
+        prompt = client.messages[0]["content"]
+        objective_line = next(line for line in prompt.splitlines() if line.startswith("- objective:"))
+        import re
+        choices = set(re.findall(r'"([A-Z_]+)"', objective_line))
+        schema = INTENT_JSON_SCHEMA["properties"]["structured_intent"]["properties"]
+        self.assertEqual(choices, set(schema["objective"]["enum"]))
+        # Nested constraints (for example soft_preferences forbids operator)
+        # must also reach JSON-object providers, not just schema-capable ones.
+        supplied_schema = json.loads(client.messages[1]["content"].split("\n", 1)[1])
+        self.assertEqual(supplied_schema, INTENT_JSON_SCHEMA)
 
     def test_trusted_store_context_is_applied_to_schema_valid_model_output(self) -> None:
         class ConflictingStoreClient(LiveAIClient):

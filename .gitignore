@@ -10,3 +10,6 @@ __pycache__/
 data/backups/
 outputs/ab-evaluation/
 outputs/deepseek-acceptance/
+outputs/
+*.inspect.ndjson
+**/snapshots/

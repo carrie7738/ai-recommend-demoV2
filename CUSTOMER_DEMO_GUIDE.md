@@ -1,3 +1,5 @@
+**Status: Outdated for V2 — pending rewrite**
+
 # AI Procurement Assistant Demo 功能说明
 
 ## 1. Demo 定位

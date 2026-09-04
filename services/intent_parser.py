@@ -288,9 +288,12 @@ recommendation_readiness:
 structured_intent:
 - store_id: string, empty when not resolved from trusted master data
 - budget: number or null
-- objective: uppercase business objective
+- objective: exactly one of "PREVENT_STOCKOUT", "SEASONAL_PREPARATION", "DISCOVER_NEW_OPPORTUNITY", "BUDGET_OPTIMIZATION", "REDUCE_WASTE", "SUPPLIER_PLANNING", or "GENERAL_PLANNING".
+  These values differ from business_intent.primary_intent: stockout_prevention maps to PREVENT_STOCKOUT,
+  seasonal_preparation or promotion_support to SEASONAL_PREPARATION, trial_growth to DISCOVER_NEW_OPPORTUNITY,
+  waste_reduction to REDUCE_WASTE. Never uppercase primary_intent to invent an objective.
 - traffic_expectation: "HIGH", "NORMAL", or "LOW"
-- occasion: uppercase occasion such as "CHRISTMAS", or "NONE"
+- occasion: exactly "CHRISTMAS" or "NONE"
 - category_preference: array of category names
 - hard_constraints: array. Supported objects are CATEGORY with operator INCLUDE_ONLY or EXCLUDE,
   and SHELF_LIFE with operator REQUIRE_LEVEL and value LONG/MEDIUM/SHORT
@@ -341,6 +344,14 @@ class IntentParser:
 
         messages = [
             {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": (
+                    "Authoritative output JSON Schema. Follow every enum, required field, "
+                    "and additionalProperties restriction exactly, including nested objects.\n"
+                    + json.dumps(INTENT_JSON_SCHEMA, ensure_ascii=True)
+                ),
+            },
             {
                 "role": "system",
                 "content": (
