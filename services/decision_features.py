@@ -95,6 +95,7 @@ class DecisionFeatureBuilder:
                 "category_relevance": category_relevance,
                 "occasion": occasion,
                 "baseline_source": baseline_source,
+                "quantity_intent": str(candidate.get("quantity_intent") or "NORMAL").upper(),
             }
             signals = self._signals(candidate, features)
             feature_rows.append({
@@ -216,22 +217,19 @@ class DecisionFeatureBuilder:
         if occasion in {"", "NONE"}:
             return "NONE"
         comparable_event_id = self._comparable_event_id(workbook["EventConfig"], occasion, as_of)
+        event_orders = pd.DataFrame()
+        peer_ids: set[str] = set()
         if comparable_event_id:
             event_orders = orders.loc[
                 (orders["ProductId"].astype(str) == product_id)
                 & (orders.get("EventId", pd.Series(index=orders.index, dtype=object)).astype(str) == comparable_event_id)
             ]
-            if not event_orders.loc[event_orders["CustomerId"].astype(str) == str(customer_id)].empty:
-                return "STORE_EVENT"
-
             customers = workbook["Customer"]
             peer_ids = set(customers.loc[
                 (customers["Industry"].astype(str).str.casefold() == industry.casefold())
                 & (customers["CustomerId"].astype(str) != str(customer_id)),
                 "CustomerId",
             ].astype(str))
-            if event_orders["CustomerId"].astype(str).isin(peer_ids).any():
-                return "PEER_EVENT"
 
         cutoff = as_of - pd.Timedelta(days=policy.recent_store_baseline_days)
         recent_store_orders = orders.loc[
@@ -239,7 +237,18 @@ class DecisionFeatureBuilder:
             & (orders["ProductId"].astype(str) == product_id)
             & (orders["OrderDate"] >= cutoff)
         ]
-        return "RECENT_STORE" if not recent_store_orders.empty else "NONE"
+        for source in policy.event_baseline_fallback_order:
+            if source == "STORE_EVENT" and not event_orders.empty:
+                if not event_orders.loc[
+                    event_orders["CustomerId"].astype(str) == str(customer_id)
+                ].empty:
+                    return source
+            elif source == "PEER_EVENT" and not event_orders.empty:
+                if event_orders["CustomerId"].astype(str).isin(peer_ids).any():
+                    return source
+            elif source == "RECENT_STORE" and not recent_store_orders.empty:
+                return source
+        return "NONE"
 
     @staticmethod
     def _comparable_event_id(events: pd.DataFrame, occasion: str, as_of: pd.Timestamp) -> str | None:
@@ -264,9 +273,14 @@ class DecisionFeatureBuilder:
             f"SHELF_LIFE_LEVEL={features['shelf_life_level']}",
             f"PEER_PURCHASE_RATIO={features['peer_purchase_ratio']}",
             f"CATEGORY_RELEVANCE={features['category_relevance']}",
+            f"PEER_POPULARITY={features['peer_popularity']}",
         ]
         if candidate.get("candidate_source") == "USER_REQUESTED":
             signals.append("USER_REQUESTED")
+            if features.get("quantity_intent") in {"HIGH", "LOW"}:
+                signals.append(f"USER_QUANTITY_INTENT={features['quantity_intent']}")
+        elif candidate.get("candidate_source") == "HISTORICAL_PURCHASE":
+            signals.append("STORE_PURCHASE_HISTORY")
         if features["occasion"] != "NONE":
             signals.append(f"OCCASION={features['occasion']}")
         if features["baseline_source"] != "NONE":

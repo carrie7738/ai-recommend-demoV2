@@ -46,7 +46,8 @@ class HardValidator:
             if not candidate_id or candidate_id not in products or candidate_id not in supply:
                 continue
             quantity = int(math.floor(self._number(item.get("final_qty"), "final_qty")))
-            sales_unit = int(self._number(item.get("sales_unit"), "sales_unit"))
+            sales_unit_value = self._number(item.get("sales_unit"), "sales_unit")
+            sales_unit = int(sales_unit_value)
             available = self._number(supply[candidate_id].get("AvailableStock", 0), "AvailableStock")
             if quantity <= 0 or sales_unit <= 0:
                 continue
@@ -129,6 +130,7 @@ class HardValidator:
         eligible_candidates: list[dict[str, Any]],
         ai_decision: dict[str, Any],
         optimizer_result: dict[str, Any],
+        as_of_date: Any | None = None,
     ) -> dict[str, Any]:
         missing = sorted(self.REQUIRED_SHEETS - set(workbook))
         if missing:
@@ -140,7 +142,7 @@ class HardValidator:
             if isinstance(item, dict) and item.get("candidate_id")
         }
         products = self._indexed_rows(workbook["Product"], "ProductId")
-        supply = self._indexed_rows(workbook["SupplyAvailability"], "ProductId")
+        supply = self._supply_rows(workbook["SupplyAvailability"], as_of_date)
         plan = optimizer_result.get("purchase_plan")
         if not isinstance(plan, list):
             raise HardValidationError("optimizer_result.purchase_plan must be a list.")
@@ -165,20 +167,25 @@ class HardValidator:
                 (supply.get(candidate_id) or {}).get("AvailableStock", 0),
                 "AvailableStock",
             )
-            sales_unit = int(self._number(item.get("sales_unit"), "sales_unit"))
+            sales_unit_value = self._number(item.get("sales_unit"), "sales_unit")
+            sales_unit = int(sales_unit_value)
             if quantity <= 0:
                 violations.append(self._violation("NON_POSITIVE_QTY", candidate_id))
             if quantity > available:
                 violations.append(self._violation("AVAILABLE_STOCK_EXCEEDED", candidate_id))
             tail_exception = available < sales_unit and math.isclose(quantity, math.floor(available))
-            if sales_unit <= 0 or (not tail_exception and quantity % sales_unit != 0):
+            if (
+                sales_unit <= 0
+                or not sales_unit_value.is_integer()
+                or (not tail_exception and quantity % sales_unit != 0)
+            ):
                 violations.append(self._violation("SALES_UNIT_VIOLATION", candidate_id))
 
         budget = structured_intent.get("budget")
+        validated_total_cost = round(self._product_plan_total(plan, products), 2)
         if budget is not None:
             budget_value = self._number(budget, "budget")
-            total_cost = self._number(optimizer_result.get("total_cost"), "total_cost")
-            if total_cost > budget_value + 1e-9:
+            if validated_total_cost > budget_value + 1e-9:
                 violations.append(self._violation("BUDGET_EXCEEDED"))
 
         high_budget_conflicts = self._high_priority_budget_conflicts(
@@ -187,11 +194,7 @@ class HardValidator:
         )
         retry_feedback = None
         if high_budget_conflicts:
-            affected = sorted({
-                item["candidate_id"]
-                for item in ai_decision.get("candidate_decisions", [])
-                if item.get("recommended") and item.get("priority") == "HIGH"
-            })
+            affected = high_budget_conflicts
             violations.append({
                 "code": "BUDGET_CONFLICT",
                 "candidate_ids": high_budget_conflicts,
@@ -215,6 +218,7 @@ class HardValidator:
             "violations": violations,
             "requires_model_retry": retry_feedback is not None,
             "retry_feedback": retry_feedback,
+            "validated_total_cost": validated_total_cost,
         }
 
     @staticmethod
@@ -232,13 +236,10 @@ class HardValidator:
             for item in optimizer_result.get("unallocated_candidates", [])
             if item.get("reason") == "BUDGET_CONFLICT" and item.get("candidate_id") in high_ids
         }
-        intensity_capped = {
-            item.get("candidate_id")
-            for item in optimizer_result.get("purchase_plan", [])
-            if item.get("candidate_id") in high_ids
-            and "BUDGET_CAPPED" in item.get("constraint_adjustments", [])
-        }
-        return sorted(unallocated | intensity_capped)
+        # A partial quantity reduction is a deterministic optimizer outcome.
+        # Retry the model only when a HIGH candidate cannot be allocated at all
+        # and a value trade-off between candidates is therefore required.
+        return sorted(unallocated)
 
     @staticmethod
     def _violation(code: str, candidate_id: str | None = None) -> dict[str, Any]:
@@ -292,6 +293,37 @@ class HardValidator:
             * cls._unit_cost(item, products.get(str(item.get("candidate_id") or "")) or {})
             for item in plan
         )
+
+    @classmethod
+    def _product_plan_total(
+        cls,
+        plan: list[dict[str, Any]],
+        products: dict[str, dict[str, Any]],
+    ) -> float:
+        """Recompute cost from trusted product master data, independent of optimizer totals."""
+        return sum(
+            int(item.get("final_qty") or 0)
+            * cls._number(
+                (products.get(str(item.get("candidate_id") or "")) or {}).get("AvgCost", 0),
+                "AvgCost",
+            )
+            for item in plan
+        )
+
+    @classmethod
+    def _supply_rows(
+        cls,
+        frame: pd.DataFrame,
+        as_of_date: Any | None,
+    ) -> dict[str, dict[str, Any]]:
+        prepared = frame.copy()
+        if as_of_date is not None and "LastUpdated" in prepared.columns:
+            as_of = pd.Timestamp(pd.to_datetime(as_of_date, errors="raise")).normalize()
+            prepared["LastUpdated"] = pd.to_datetime(prepared["LastUpdated"], errors="coerce")
+            prepared = prepared.loc[
+                prepared["LastUpdated"].notna() & (prepared["LastUpdated"] <= as_of)
+            ].sort_values("LastUpdated")
+        return cls._indexed_rows(prepared, "ProductId")
 
     @staticmethod
     def _unit_cost(item: dict[str, Any], product: dict[str, Any]) -> float:

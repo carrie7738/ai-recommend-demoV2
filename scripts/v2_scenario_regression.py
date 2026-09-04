@@ -13,6 +13,29 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+
+# The video scenario file intentionally contains presentation slugs only.  Keep
+# the join to the V2 workbook explicit so a workbook row cannot be selected by
+# position, store name, or a guessed date.  01 and 06 are paired against the
+# same normal-replenishment baseline by design.
+SCENARIO_ID_BY_SLUG = {
+    "01_high_traffic": "V2-001",
+    "02_holiday_promo": "V2-018",
+    "03_low_budget": "V2-004",
+    "04_long_shelf": "V2-006",
+    "05_fruit_focus": "V2-008",
+    "06_no_budget": "V2-001",
+}
+
+SCENARIO_DECISION_PATH_BY_SLUG = {
+    "01_high_traffic": "NORMAL_REPLENISHMENT",
+    "02_holiday_promo": "STORE_EVENT_BASELINE",
+    "03_low_budget": "HIGH_STOCKOUT_RISK",
+    "04_long_shelf": "LONG_SHELF_LIFE_SOFT",
+    "05_fruit_focus": "CATEGORY_PREFERENCE_SOFT",
+    "06_no_budget": "NORMAL_REPLENISHMENT",
+}
+
 from services.ai_client import AIClient  # noqa: E402
 from services.ai_decision import AIDecisionLayer  # noqa: E402
 from services.intent_parser import IntentParser  # noqa: E402
@@ -40,6 +63,110 @@ SCENARIO_EXPECTATIONS = {
     },
     "06_no_budget": {"budget": None, "traffic_expectation": "HIGH"},
 }
+
+
+def load_scenario_bindings(
+    workbook: dict[str, pd.DataFrame],
+    video_scenarios: list[dict],
+) -> list[dict]:
+    """Join video slugs to exactly one audited V2 workbook scenario row.
+
+    The video JSON remains the source of the user-facing request.  The V2
+    workbook supplies the evaluation customer and date, and its DecisionPath
+    is checked against the explicit mapping above.  No fallback customer or
+    date is permitted because that would make a regression result ambiguous.
+    """
+    expected_slugs = set(SCENARIO_ID_BY_SLUG)
+    observed_slugs = [str(item.get("slug") or "").strip() for item in video_scenarios]
+    if len(observed_slugs) != len(set(observed_slugs)):
+        raise ValueError(
+            "Video scenario slugs must be unique; "
+            f"observed={observed_slugs!r}"
+        )
+    observed_set = set(observed_slugs)
+    missing_slugs = sorted(expected_slugs - observed_set)
+    unknown_slugs = sorted(observed_set - expected_slugs)
+    if missing_slugs or unknown_slugs:
+        raise ValueError(
+            "Video scenario slug set does not match the audited mapping: "
+            f"missing={missing_slugs!r}, unknown={unknown_slugs!r}"
+        )
+
+    scenarios_sheet = workbook.get("V2TestScenarios")
+    if scenarios_sheet is None or scenarios_sheet.empty:
+        raise ValueError("V2TestScenarios sheet is required for scenario binding")
+    required_columns = {"ScenarioId", "CustomerId", "AsOfDate", "DecisionPath"}
+    missing_columns = sorted(required_columns - set(scenarios_sheet.columns))
+    if missing_columns:
+        raise ValueError(
+            "V2TestScenarios is missing binding columns: "
+            f"{missing_columns!r}"
+        )
+
+    scenario_ids = scenarios_sheet["ScenarioId"].astype(str).str.strip()
+    expected_candidates = workbook.get("V2ExpectedCandidates")
+    bindings: list[dict] = []
+    for video in video_scenarios:
+        slug = str(video.get("slug") or "").strip()
+        scenario_id = SCENARIO_ID_BY_SLUG[slug]
+        matches = scenarios_sheet.loc[scenario_ids == scenario_id]
+        if len(matches) != 1:
+            evidence = matches[
+                [column for column in scenarios_sheet.columns if column in required_columns]
+            ].to_dict("records")
+            raise ValueError(
+                "Scenario mapping must resolve to exactly one V2TestScenarios row: "
+                f"slug={slug!r}, scenario_id={scenario_id!r}, "
+                f"row_count={len(matches)}, rows={evidence!r}"
+            )
+
+        row = matches.iloc[0]
+        expected_path = SCENARIO_DECISION_PATH_BY_SLUG[slug]
+        raw_path = row["DecisionPath"]
+        actual_path = "" if pd.isna(raw_path) else str(raw_path).strip()
+        if actual_path != expected_path:
+            raise ValueError(
+                "Scenario mapping DecisionPath mismatch: "
+                f"slug={slug!r}, scenario_id={scenario_id!r}, "
+                f"expected={expected_path!r}, actual={actual_path!r}"
+            )
+
+        raw_customer_id = row["CustomerId"]
+        customer_id = "" if pd.isna(raw_customer_id) else str(raw_customer_id).strip()
+        if not customer_id:
+            raise ValueError(
+                f"Scenario mapping has empty CustomerId: slug={slug!r}, "
+                f"scenario_id={scenario_id!r}"
+            )
+        as_of_date = pd.to_datetime(row["AsOfDate"], errors="coerce")
+        if pd.isna(as_of_date):
+            raise ValueError(
+                f"Scenario mapping has invalid AsOfDate: slug={slug!r}, "
+                f"scenario_id={scenario_id!r}, value={row['AsOfDate']!r}"
+            )
+
+        expected_candidate_count = None
+        if expected_candidates is not None:
+            if "ScenarioId" not in expected_candidates.columns:
+                raise ValueError("V2ExpectedCandidates must contain ScenarioId")
+            expected_candidate_count = int(
+                (expected_candidates["ScenarioId"].astype(str).str.strip() == scenario_id).sum()
+            )
+            if expected_candidate_count == 0:
+                raise ValueError(
+                    "Mapped ScenarioId has no V2ExpectedCandidates rows: "
+                    f"slug={slug!r}, scenario_id={scenario_id!r}"
+                )
+
+        bindings.append({
+            **video,
+            "scenario_id": scenario_id,
+            "customer_id": customer_id,
+            "as_of_date": pd.Timestamp(as_of_date).normalize().strftime("%Y-%m-%d"),
+            "decision_path": actual_path,
+            "expected_candidate_count": expected_candidate_count,
+        })
+    return bindings
 
 
 def _scenario_contract_violations(
@@ -85,6 +212,92 @@ def _scenario_contract_violations(
     total_cost = result["optimizer_result"].get("total_cost")
     if budget is not None and (total_cost is None or total_cost > budget + 1e-9):
         violations.append(f"BUDGET_EXCEEDED total={total_cost!r}, budget={budget!r}")
+
+    decisions = {
+        item.get("candidate_id"): item
+        for item in result.get("ai_decision", {}).get("candidate_decisions", [])
+    }
+    features = {
+        item.get("candidate_id"): item.get("features", {})
+        for item in result.get("safe_decision_context", {}).get("candidates", [])
+    }
+    selected_ids = {item.get("candidate_id") for item in final_plan}
+
+    if scenario_slug == "01_high_traffic":
+        if not any(
+            item.get("recommended") and item.get("replenishment_intensity") == "HIGH"
+            for item in decisions.values()
+        ):
+            violations.append("HIGH_TRAFFIC_DID_NOT_INCREASE_ANY_AI_INTENSITY")
+    elif scenario_slug == "02_holiday_promo":
+        if not any(item.get("baseline_source") == "STORE_EVENT" for item in final_plan):
+            violations.append("STORE_EVENT_BASELINE_NOT_USED_IN_FINAL_PLAN")
+    elif scenario_slug == "03_low_budget":
+        selected_high = {
+            candidate_id
+            for candidate_id in selected_ids
+            if (decisions.get(candidate_id) or {}).get("priority") == "HIGH"
+        }
+        if not selected_high:
+            violations.append("NO_HIGH_PRIORITY_PRODUCT_RETAINED")
+        high_budget_unallocated = [
+            item.get("candidate_id")
+            for item in result.get("optimizer_result", {}).get("unallocated_candidates", [])
+            if item.get("reason") == "BUDGET_CONFLICT"
+            and (decisions.get(item.get("candidate_id")) or {}).get("priority") == "HIGH"
+        ]
+        if high_budget_unallocated:
+            violations.append(
+                f"HIGH_PRIORITY_BUDGET_CONFLICT={sorted(high_budget_unallocated)!r}"
+            )
+    elif scenario_slug == "04_long_shelf":
+        selected_long = {
+            candidate_id
+            for candidate_id in selected_ids
+            if (features.get(candidate_id) or {}).get("shelf_life_level") == "LONG"
+        }
+        if not selected_long:
+            violations.append("LONG_SHELF_PREFERENCE_NOT_REFLECTED_IN_FINAL_PLAN")
+        elif not any(
+            "long shelf-life preference" in str(reason).casefold()
+            for item in final_plan
+            if item.get("candidate_id") in selected_long
+            for reason in item.get("why_selected", [])
+        ):
+            violations.append("LONG_SHELF_PREFERENCE_MISSING_FROM_DECISION_REASON")
+    elif scenario_slug == "05_fruit_focus":
+        high_relevance = {
+            candidate_id
+            for candidate_id, row in features.items()
+            if row.get("category_relevance") == "HIGH"
+        }
+        low_relevance = {
+            candidate_id
+            for candidate_id, row in features.items()
+            if row.get("category_relevance") == "LOW"
+        }
+        if not selected_ids.intersection(high_relevance):
+            violations.append("PREFERRED_CATEGORY_NOT_SELECTED")
+        high_rate = (
+            len(selected_ids.intersection(high_relevance)) / len(high_relevance)
+            if high_relevance else 0.0
+        )
+        low_rate = (
+            len(selected_ids.intersection(low_relevance)) / len(low_relevance)
+            if low_relevance else 0.0
+        )
+        if high_rate < low_rate:
+            violations.append(
+                f"PREFERRED_CATEGORY_SELECTION_RATE_LOWER high={high_rate:.3f}, low={low_rate:.3f}"
+            )
+    elif scenario_slug == "06_no_budget":
+        if result.get("optimizer_result", {}).get("remaining_budget") is not None:
+            violations.append("NO_BUDGET_MODE_HAS_REMAINING_BUDGET")
+        if any(
+            "BUDGET_CAPPED" in item.get("constraint_adjustments", [])
+            for item in final_plan
+        ):
+            violations.append("NO_BUDGET_MODE_APPLIED_BUDGET_CAP")
     return violations
 
 
@@ -109,6 +322,7 @@ def main() -> int:
         (REPOSITORY_ROOT / "videos" / "procurement-scenarios" / "media" / "scenarios.json")
         .read_text(encoding="utf-8")
     )
+    scenarios = load_scenario_bindings(workbook, scenarios)
     if args.case_slug:
         scenarios = [item for item in scenarios if item["slug"] == args.case_slug]
     reports = []
@@ -125,14 +339,19 @@ def main() -> int:
         try:
             result = pipeline.run(
                 workbook,
-                "C001",
+                scenario["customer_id"],
                 scenario["request"],
-                "2026-06-02",
+                scenario["as_of_date"],
             )
             trace = result["decision_trace"]
             contract_violations = _scenario_contract_violations(scenario["slug"], result)
             reports.append({
                 "case": scenario["slug"],
+                "scenario_id": scenario["scenario_id"],
+                "customer_id": scenario["customer_id"],
+                "as_of_date": scenario["as_of_date"],
+                "decision_path": scenario["decision_path"],
+                "expected_candidate_count": scenario["expected_candidate_count"],
                 "intent": result["safe_decision_context"]["structured_intent"],
                 "intent_source": result["intent"].get("AIAnalysisStatus"),
                 "event_context": result.get("event_context"),
@@ -158,6 +377,11 @@ def main() -> int:
             any_failure = True
             reports.append({
                 "case": scenario["slug"],
+                "scenario_id": scenario["scenario_id"],
+                "customer_id": scenario["customer_id"],
+                "as_of_date": scenario["as_of_date"],
+                "decision_path": scenario["decision_path"],
+                "expected_candidate_count": scenario["expected_candidate_count"],
                 "pipeline_version": "V2",
                 "v2_status": "FAILED",
                 "fallback_triggered": False,
@@ -170,6 +394,10 @@ def main() -> int:
         output = [
             {
                 "case": item["case"],
+                "scenario_id": item.get("scenario_id"),
+                "customer_id": item.get("customer_id"),
+                "as_of_date": item.get("as_of_date"),
+                "decision_path": item.get("decision_path"),
                 "intent": {
                     key: item.get("intent", {}).get(key)
                     for key in (
@@ -206,6 +434,10 @@ def main() -> int:
         output = [
             {
                 "case": item["case"],
+                "scenario_id": item.get("scenario_id"),
+                "customer_id": item.get("customer_id"),
+                "as_of_date": item.get("as_of_date"),
+                "decision_path": item.get("decision_path"),
                 "intent": item.get("intent"),
                 "intent_source": item.get("intent_source"),
                 "event_context": item.get("event_context"),

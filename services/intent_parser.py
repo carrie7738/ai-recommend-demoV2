@@ -366,9 +366,11 @@ class IntentParser:
                     json_schema=INTENT_JSON_SCHEMA,
                     schema_name="procurement_intent",
                 )
-                self._validate_structured_output(result)
             else:
                 result = self.ai_client.chat_completion_json(messages)
+            # Provider capabilities only control the wire format.  The local
+            # business contract must be identical for every configured model.
+            self._validate_structured_output(result)
             return self._with_store_context(
                 self._with_analysis_source(
                     self._normalize_intent(result),
@@ -461,7 +463,8 @@ class IntentParser:
             intent["PromotionFlag"] = True
             intent["TimeRange"] = "holiday_window"
             intent["Occasion"] = "CHRISTMAS" if "christmas" in lower else "HOLIDAY"
-            intent["Objective"] = "SEASONAL_PREPARATION"
+            if intent["Objective"] != "PREVENT_STOCKOUT":
+                intent["Objective"] = "SEASONAL_PREPARATION"
         elif "next week" in lower:
             intent["TimeRange"] = "next_week"
         elif "this week" in lower:

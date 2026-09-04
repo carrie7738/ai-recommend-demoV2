@@ -2,7 +2,12 @@ import unittest
 
 import pandas as pd
 
-from app import failed_v2_fallback_status, resolve_v2_as_of_date, should_render_recommendations
+from app import (
+    build_v2_display_context,
+    failed_v2_fallback_status,
+    resolve_v2_as_of_date,
+    should_render_recommendations,
+)
 
 
 class AppStateTests(unittest.TestCase):
@@ -13,6 +18,21 @@ class AppStateTests(unittest.TestCase):
         self.assertEqual(status["v2_status"], "FAILED")
         self.assertTrue(status["fallback_triggered"])
         self.assertEqual(status["fallback_reason"], "AI decision schema violation")
+
+    def test_v2_display_context_does_not_require_v1_recommendations(self) -> None:
+        context = build_v2_display_context(
+            {"SessionId": "S1", "CustomerId": "OLD", "Budget": 500.0},
+            {
+                "Budget": 300.0,
+                "StoreContext": {"CustomerId": "C051"},
+                "StructuredIntent": {"budget": 300.0},
+            },
+        )
+
+        self.assertEqual(context["CustomerId"], "C051")
+        self.assertEqual(context["Budget"], 300.0)
+        self.assertEqual(context["StructuredIntent"]["budget"], 300.0)
+
     def test_recommendations_are_hidden_before_a_request_is_submitted(self) -> None:
         self.assertFalse(should_render_recommendations(False, None))
         self.assertFalse(should_render_recommendations(False, "S001"))

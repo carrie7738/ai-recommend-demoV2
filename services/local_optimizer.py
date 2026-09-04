@@ -64,7 +64,7 @@ class LocalOptimizer:
         as_of = self._as_timestamp(as_of_date)
         candidates = {item["candidate_id"]: item for item in eligible_candidates}
         products = self._indexed_rows(workbook["Product"], "ProductId")
-        supply = self._indexed_rows(workbook["SupplyAvailability"], "ProductId")
+        supply = self._supply_rows(workbook["SupplyAvailability"], as_of)
         decisions = sorted(
             (item for item in ai_decision["candidate_decisions"] if item["recommended"]),
             key=lambda item: (
@@ -181,16 +181,37 @@ class LocalOptimizer:
         as_of: pd.Timestamp,
         sales_unit: int,
     ) -> tuple[str, float]:
+        occasion = str(structured_intent.get("occasion") or "NONE").upper()
+        preferred_source = str(
+            (candidate.get("features") or {}).get("baseline_source") or "NONE"
+        ).upper()
+        if (
+            candidate.get("recommendation_type") == "DISCOVERY"
+            and candidate.get("candidate_source") == "USER_REQUESTED"
+            and occasion != "NONE"
+        ):
+            if preferred_source in {"STORE_EVENT", "PEER_EVENT"}:
+                event_quantity = self._event_baseline(
+                    workbook,
+                    customer_id,
+                    candidate_id,
+                    occasion,
+                    as_of,
+                    preferred_source,
+                )
+                if event_quantity is not None:
+                    return preferred_source, event_quantity
+            if preferred_source == "RECENT_STORE":
+                return preferred_source, self._recent_store_baseline(
+                    workbook["OrderHistory"], customer_id, candidate_id, as_of
+                )
+
         if candidate.get("recommendation_type") == "DISCOVERY":
             return (
                 "DISCOVERY_TRIAL",
                 float(sales_unit * self.policy.discovery_trial_sales_units),
             )
 
-        occasion = str(structured_intent.get("occasion") or "NONE").upper()
-        preferred_source = str(
-            (candidate.get("features") or {}).get("baseline_source") or "NONE"
-        ).upper()
         if occasion != "NONE" and preferred_source in {"STORE_EVENT", "PEER_EVENT"}:
             event_quantity = self._event_baseline(
                 workbook,
@@ -297,6 +318,20 @@ class LocalOptimizer:
             return 0.0
         value = pd.to_numeric(pd.Series([rows.iloc[-1].get("CurrentStock")]), errors="coerce").iloc[0]
         return max(float(value), 0.0) if pd.notna(value) else 0.0
+
+    @classmethod
+    def _supply_rows(
+        cls,
+        supply: pd.DataFrame,
+        as_of: pd.Timestamp,
+    ) -> dict[str, dict[str, Any]]:
+        prepared = supply.copy()
+        if "LastUpdated" in prepared.columns:
+            prepared["LastUpdated"] = pd.to_datetime(prepared["LastUpdated"], errors="coerce")
+            prepared = prepared.loc[
+                prepared["LastUpdated"].notna() & (prepared["LastUpdated"] <= as_of)
+            ].sort_values("LastUpdated")
+        return cls._indexed_rows(prepared, "ProductId")
 
     @staticmethod
     def _apply_supply_constraints(

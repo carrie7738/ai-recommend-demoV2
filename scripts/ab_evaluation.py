@@ -22,7 +22,10 @@ from services.intent_parser import IntentParser  # noqa: E402
 from services.v2_decision_pipeline import V2DecisionPipeline  # noqa: E402
 from services.v2_preparation import V2PreparationPipeline  # noqa: E402
 from scripts.model_smoke_test import _settings_for  # noqa: E402
-from scripts.v2_scenario_regression import _scenario_contract_violations  # noqa: E402
+from scripts.v2_scenario_regression import (  # noqa: E402
+    _scenario_contract_violations,
+    load_scenario_bindings,
+)
 
 
 class MetricsRecordingClient:
@@ -113,6 +116,10 @@ def _record_for_result(
     final_plan = result.get("final_purchase_plan", [])
     return {
         "scenario": scenario["slug"],
+        "scenario_id": scenario.get("scenario_id"),
+        "customer_id": scenario.get("customer_id"),
+        "as_of_date": scenario.get("as_of_date"),
+        "decision_path": scenario.get("decision_path"),
         "run": run_number,
         "provider": provider,
         "configured_model": configured_model,
@@ -163,6 +170,7 @@ def run_evaluation(
         (REPOSITORY_ROOT / "videos" / "procurement-scenarios" / "media" / "scenarios.json")
         .read_text(encoding="utf-8")
     )
+    scenarios = load_scenario_bindings(workbook, scenarios)
     if case_slugs:
         scenarios = [item for item in scenarios if item["slug"] in case_slugs]
 
@@ -184,9 +192,9 @@ def run_evaluation(
                 try:
                     result = pipeline.run(
                         workbook,
-                        "C001",
+                        scenario["customer_id"],
                         scenario["request"],
-                        "2026-06-02",
+                        scenario["as_of_date"],
                     )
                     records.append(_record_for_result(
                         provider,
@@ -199,6 +207,10 @@ def run_evaluation(
                 except Exception as exc:
                     records.append({
                         "scenario": scenario["slug"],
+                        "scenario_id": scenario["scenario_id"],
+                        "customer_id": scenario["customer_id"],
+                        "as_of_date": scenario["as_of_date"],
+                        "decision_path": scenario["decision_path"],
                         "run": run_number,
                         "provider": provider,
                         "configured_model": settings.model,
@@ -224,7 +236,8 @@ def write_artifacts(records: list[dict[str, Any]], output_dir: Path) -> None:
     )
 
     scalar_fields = [
-        "scenario", "run", "provider", "configured_model", "status",
+        "scenario", "scenario_id", "customer_id", "as_of_date", "decision_path",
+        "run", "provider", "configured_model", "status",
         "eligible_count", "recommended_count", "total_cost", "remaining_budget",
         "validator_status", "repair_count", "retry_count", "v2_status",
         "fallback_triggered", "latency_ms", "input_tokens", "output_tokens",

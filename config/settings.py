@@ -26,7 +26,7 @@ class AISettings:
     provider: str = "deepseek"
     api_key: str = ""
     base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-v4-flash"
+    model: str = "deepseek-chat"
     temperature: float = 0.3
     max_tokens: int = 1024
     structured_max_tokens: int = 16384

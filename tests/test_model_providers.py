@@ -276,22 +276,10 @@ class ModelProviderTests(unittest.TestCase):
             get_settings.cache_clear()
 
     def test_intent_parser_reports_gemini_without_business_logic_changes(self) -> None:
-        class GeminiIntentClient:
-            is_available = True
-            provider_name = "gemini"
+        from tests.test_intent_parser import LiveAIClient
 
-            @staticmethod
-            def chat_completion_json(messages):
-                return {
-                    "budget": None,
-                    "traffic_level": "NORMAL",
-                    "promotion_flag": False,
-                    "shelf_life_preference": "NORMAL",
-                    "preferred_category": None,
-                    "excluded_category": None,
-                    "time_range": "normal",
-                    "expected_intent": "Normal replenishment.",
-                }
+        class GeminiIntentClient(LiveAIClient):
+            provider_name = "gemini"
 
         result = IntentParser(ai_client=GeminiIntentClient()).parse_intent(
             "Normal replenishment"
@@ -301,22 +289,10 @@ class ModelProviderTests(unittest.TestCase):
         self.assertEqual(result["AIAnalysisSource"], "Gemini")
 
     def test_intent_parser_reports_glm_without_business_logic_changes(self) -> None:
-        class GLMIntentClient:
-            is_available = True
-            provider_name = "glm"
+        from tests.test_intent_parser import LiveAIClient
 
-            @staticmethod
-            def chat_completion_json(messages):
-                return {
-                    "budget": None,
-                    "traffic_level": "NORMAL",
-                    "promotion_flag": False,
-                    "shelf_life_preference": "NORMAL",
-                    "preferred_category": None,
-                    "excluded_category": None,
-                    "time_range": "normal",
-                    "expected_intent": "Normal replenishment.",
-                }
+        class GLMIntentClient(LiveAIClient):
+            provider_name = "glm"
 
         result = IntentParser(ai_client=GLMIntentClient()).parse_intent("Normal replenishment")
 

@@ -17,6 +17,9 @@ class WhySelectedBuilder:
         "BASELINE_SOURCE=STORE_EVENT": "Supported by this store's comparable event history.",
         "BASELINE_SOURCE=PEER_EVENT": "Supported by comparable peer event history.",
         "BASELINE_SOURCE=RECENT_STORE": "Supported by the store's recent purchase baseline.",
+        "PEER_POPULARITY=HIGH": "Peer purchase evidence supports this candidate.",
+        "USER_QUANTITY_INTENT=HIGH": "The user explicitly requested a higher purchase level.",
+        "STORE_PURCHASE_HISTORY": "The store has verified purchase history for this product.",
     }
 
     def build(
@@ -68,29 +71,11 @@ class WhySelectedBuilder:
 
     @staticmethod
     def _family_reason(signal: str) -> str | None:
-        if signal.startswith("PEER_PURCHASE_RATIO="):
-            return "Peer purchase evidence supports this candidate."
         if signal.startswith("OCCASION="):
             occasion = signal.partition("=")[2].replace("_", " ").title()
             return f"Relevant to the {occasion} purchase window."
-        if signal.startswith("SHELF_LIFE_LEVEL="):
-            level = signal.partition("=")[2].lower()
-            return f"Shelf-life profile is {level}."
-        if signal.startswith("CATEGORY_RELEVANCE="):
-            level = signal.partition("=")[2].lower()
-            return f"Category relevance is {level}."
-        if signal.startswith("STOCKOUT_RISK="):
-            level = signal.partition("=")[2].lower()
-            return f"Stockout risk is {level}."
-        if signal.startswith("PURCHASE_FREQUENCY="):
-            level = signal.partition("=")[2].lower()
-            return f"Purchase frequency is {level}."
-        if signal.startswith("PRODUCT_DEMAND_TREND="):
-            direction = signal.partition("=")[2].lower()
-            return f"Product demand trend is {direction}."
-        if signal.startswith("BASELINE_SOURCE="):
-            source = signal.partition("=")[2].replace("_", " ").lower()
-            return f"Quantity baseline comes from {source} data."
+        # Low/unknown/neutral signals are audit context, not positive reasons
+        # for selecting a product.
         return None
 
 

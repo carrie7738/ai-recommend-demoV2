@@ -108,7 +108,7 @@ class V2CandidatePoolTests(unittest.TestCase):
         self.assertEqual(candidate["sales_unit"], 6)
         self.assertEqual(candidate["available_stock"], 4)
 
-    def test_holiday_explicit_product_is_replenishment(self) -> None:
+    def test_holiday_does_not_reclassify_unpurchased_explicit_product(self) -> None:
         result = self.build(
             customer_id="C054",
             intent=self.intent(
@@ -120,8 +120,47 @@ class V2CandidatePoolTests(unittest.TestCase):
         candidate = result.find("P212")
 
         self.assertTrue(candidate["eligible"])
-        self.assertEqual(candidate["recommendation_type"], "REPLENISHMENT")
+        self.assertEqual(candidate["recommendation_type"], "DISCOVERY")
         self.assertEqual(candidate["candidate_source"], "USER_REQUESTED")
+
+    def test_missing_sales_unit_fails_closed(self) -> None:
+        workbook = {name: frame.copy() for name, frame in self.workbook.items()}
+        workbook["Product"].loc[
+            workbook["Product"]["ProductId"].astype(str) == "P201", "SalesUnit"
+        ] = None
+
+        with self.assertRaisesRegex(ValueError, "SalesUnit is required"):
+            self.builder.build(workbook, "C051", self.intent(), "2026-06-02")
+
+    def test_fractional_sales_unit_fails_closed(self) -> None:
+        workbook = {name: frame.copy() for name, frame in self.workbook.items()}
+        workbook["Product"]["SalesUnit"] = workbook["Product"]["SalesUnit"].astype(float)
+        workbook["Product"].loc[
+            workbook["Product"]["ProductId"].astype(str) == "P201", "SalesUnit"
+        ] = 1.5
+
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            self.builder.build(workbook, "C051", self.intent(), "2026-06-02")
+
+    def test_future_supply_snapshot_is_not_used(self) -> None:
+        workbook = {name: frame.copy() for name, frame in self.workbook.items()}
+        current = workbook["SupplyAvailability"].loc[
+            workbook["SupplyAvailability"]["ProductId"].astype(str) == "P201"
+        ].iloc[-1].copy()
+        expected_stock = float(current["AvailableStock"])
+        current["AvailableStock"] = 0
+        current["LastUpdated"] = "2027-01-01"
+        workbook["SupplyAvailability"] = pd.concat(
+            [workbook["SupplyAvailability"], pd.DataFrame([current])],
+            ignore_index=True,
+        )
+
+        candidate = self.builder.build(
+            workbook, "C051", self.intent(), "2026-06-02"
+        ).find("P201")
+
+        self.assertTrue(candidate["eligible"])
+        self.assertEqual(candidate["available_stock"], expected_stock)
 
 
 if __name__ == "__main__":

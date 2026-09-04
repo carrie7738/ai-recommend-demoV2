@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 
 import pandas as pd
@@ -62,6 +63,11 @@ class CandidatePoolBuilder:
             raise CandidatePoolError(f"Unknown customer: {customer_id}")
         target_industry = str(customer_rows.iloc[0].get("Industry") or "").strip()
 
+        if "LastUpdated" in supply.columns:
+            supply["LastUpdated"] = pd.to_datetime(supply["LastUpdated"], errors="coerce")
+            supply = supply.loc[
+                supply["LastUpdated"].notna() & (supply["LastUpdated"] <= as_of)
+            ].sort_values("LastUpdated")
         supply_map = (
             supply.drop_duplicates(subset=["ProductId"], keep="last")
             .set_index("ProductId")
@@ -83,7 +89,8 @@ class CandidatePoolBuilder:
         )
         peer_customer_ids = set(
             customers.loc[
-                customers["Industry"].astype(str).str.casefold() == target_industry.casefold(),
+                (customers["Industry"].astype(str).str.casefold() == target_industry.casefold())
+                & (customers["CustomerId"].astype(str) != str(customer_id)),
                 "CustomerId",
             ].astype(str)
         )
@@ -105,10 +112,9 @@ class CandidatePoolBuilder:
                 peer_customer_ids,
             )
             if reference:
-                has_occasion = str(structured_intent.get("occasion") or "NONE").upper() != "NONE"
                 recommendation_type = (
                     "REPLENISHMENT"
-                    if product_id in target_product_ids or has_occasion
+                    if product_id in target_product_ids
                     else "DISCOVERY"
                 )
                 source = "USER_REQUESTED"
@@ -265,8 +271,13 @@ class CandidatePoolBuilder:
     @staticmethod
     def _sales_unit(value: Any) -> int:
         if pd.isna(value):
-            return 1
+            raise CandidatePoolError("Product SalesUnit is required for V2 candidates.")
         try:
-            return max(int(float(value)), 1)
+            numeric = float(value)
         except (TypeError, ValueError):
-            return 1
+            raise CandidatePoolError(f"Product SalesUnit must be a positive integer, got {value!r}.") from None
+        if not math.isfinite(numeric) or numeric <= 0 or not numeric.is_integer():
+            raise CandidatePoolError(
+                f"Product SalesUnit must be a positive integer, got {value!r}."
+            )
+        return int(numeric)

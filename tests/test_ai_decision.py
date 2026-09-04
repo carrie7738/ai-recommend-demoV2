@@ -211,6 +211,45 @@ class V2DecisionPipelineTests(unittest.TestCase):
         self.assertEqual(result["v2_status"], "SUCCESS")
         self.assertFalse(result["fallback_triggered"])
 
+    def test_empty_eligible_candidates_return_local_empty_success_without_ai_call(self) -> None:
+        class Preparation:
+            @staticmethod
+            def prepare(*args, **kwargs):
+                return {
+                    "intent": {"AIAnalysisStatus": "live"},
+                    "candidate_pool": {
+                        "eligible_candidates": [],
+                        "rejected_candidates": [
+                            {"candidate_id": "P999", "rejection_code": "HARD_CONSTRAINT"},
+                        ],
+                    },
+                    "safe_decision_context": {
+                        "structured_intent": {
+                            "objective": "PREVENT_STOCKOUT",
+                            "traffic_expectation": "NORMAL",
+                            "occasion": "NONE",
+                            "budget": None,
+                        },
+                        "candidates": [],
+                    },
+                }
+
+        class FailingDecisionLayer:
+            def decide(self, context):
+                raise AssertionError("AIDecisionLayer must not run without eligible candidates")
+
+        result = V2DecisionPipeline(
+            preparation=Preparation(),
+            decision_layer=FailingDecisionLayer(),
+        ).run(self.workbook, "C051", "No eligible products remain.", "2026-06-02")
+
+        self.assertEqual(result["final_purchase_plan"], [])
+        self.assertEqual(result["optimizer_result"]["purchase_plan"], [])
+        self.assertTrue(result["validation_result"]["valid"])
+        self.assertEqual(result["validation_result"]["status"], "PASS")
+        self.assertEqual(result["v2_status"], "SUCCESS")
+        self.assertFalse(result["fallback_triggered"])
+
 
 if __name__ == "__main__":
     unittest.main()

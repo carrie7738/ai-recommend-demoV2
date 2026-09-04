@@ -22,6 +22,69 @@ class LiveAIClient:
             "excluded_category": None,
             "time_range": "next_week",
             "expected_intent": "Prevent stockouts for fruit next week.",
+            "business_intent": {
+                "primary_intent": "stockout_prevention",
+                "secondary_intents": [],
+                "decision_type": "planning",
+                "urgency": "medium",
+                "intent_summary": "Prevent stockouts for fruit next week.",
+            },
+            "decision_signals": {
+                "expected_demand_change": "increase",
+                "demand_driver": "traffic",
+                "stockout_sensitivity": "high",
+                "waste_sensitivity": "medium",
+                "price_sensitivity": "medium",
+                "growth_appetite": "medium",
+                "budget_strictness": "strict",
+                "substitution_allowed": False,
+            },
+            "uncertainty": {
+                "overall_confidence": 0.8,
+                "field_sources": {
+                    "budget": "explicit",
+                    "traffic_level": "explicit",
+                    "promotion_flag": "explicit",
+                    "shelf_life_preference": "explicit",
+                    "category": "explicit",
+                    "time_horizon": "explicit",
+                },
+                "low_confidence_fields": [],
+            },
+            "missing_information": [],
+            "recommendation_readiness": {
+                "can_generate_recommendation": True,
+                "should_ask_follow_up": False,
+                "confidence_level": "high",
+                "confidence_score": 0.8,
+                "confidence_drivers": [],
+                "confidence_risks": [],
+                "follow_up_question": "",
+            },
+            "structured_intent": {
+                "store_id": "",
+                "budget": 500,
+                "objective": "PREVENT_STOCKOUT",
+                "traffic_expectation": "HIGH",
+                "occasion": "NONE",
+                "category_preference": ["Fruit"],
+                "hard_constraints": [],
+                "soft_preferences": [],
+                "explicit_products": [],
+            },
+            "store_context": {},
+            "store_considerations": [],
+        }
+
+
+class SchemaLessInvalidAIClient:
+    is_available = True
+    supports_json_schema = False
+
+    def chat_completion_json(self, messages):
+        return {
+            "budget": 500,
+            "traffic_level": "HIGH",
         }
 
 
@@ -68,6 +131,14 @@ class IntentParserFallbackTests(unittest.TestCase):
         self.assertEqual(intent["AIAnalysisStatus"], "live")
         self.assertEqual(intent["AIAnalysisSource"], "DeepSeek")
 
+    def test_schema_less_provider_response_is_locally_schema_validated(self) -> None:
+        intent = IntentParser(ai_client=SchemaLessInvalidAIClient()).parse_intent(
+            "Budget NZD 500 and high traffic"
+        )
+
+        self.assertEqual(intent["AIAnalysisStatus"], "fallback")
+        self.assertEqual(intent["AIAnalysisSource"], "Rules fallback")
+
     def test_live_prompt_marks_actual_user_request_separately_from_example(self) -> None:
         class RecordingLiveClient(LiveAIClient):
             def __init__(self):
@@ -84,11 +155,10 @@ class IntentParserFallbackTests(unittest.TestCase):
         self.assertIn("Budget NZD 500 and high traffic", client.messages[-1]["content"])
         self.assertIn("not the illustrative JSON example", client.messages[-1]["content"])
 
-    def test_trusted_store_context_overrides_model_store_identity(self) -> None:
+    def test_trusted_store_context_is_applied_to_schema_valid_model_output(self) -> None:
         class ConflictingStoreClient(LiveAIClient):
             def chat_completion_json(self, messages):
                 payload = super().chat_completion_json(messages)
-                payload["store_context"] = {"customer_id": "C999", "store_name": "Wrong Store"}
                 payload["store_considerations"] = ["Use the trusted store profile."]
                 return payload
 
@@ -147,11 +217,14 @@ class IntentParserFallbackTests(unittest.TestCase):
             def chat_completion_json(self, messages):
                 payload = super().chat_completion_json(messages)
                 payload["structured_intent"] = {
+                    **payload["structured_intent"],
                     "objective": "PREVENT_STOCKOUT",
                     "occasion": "CHRISTMAS",
                     "hard_constraints": [],
                     "soft_preferences": [{"type": "CATEGORY", "value": "Fruit"}],
-                    "explicit_products": [{"sku": "P209", "quantity_intent": "HIGH"}],
+                    "explicit_products": [
+                        {"sku": "P209", "product_name": "", "quantity_intent": "HIGH"}
+                    ],
                 }
                 return payload
 
@@ -163,7 +236,7 @@ class IntentParserFallbackTests(unittest.TestCase):
         self.assertEqual(structured["explicit_products"][0]["sku"], "P209")
         self.assertEqual(structured["explicit_products"][0]["quantity_intent"], "HIGH")
 
-    def test_live_payload_canonicalizes_free_text_objective_and_occasion(self) -> None:
+    def test_invalid_free_text_enum_falls_back_to_local_intent_parsing(self) -> None:
         class FreeTextStructuredClient(LiveAIClient):
             def chat_completion_json(self, messages):
                 payload = super().chat_completion_json(messages)
@@ -177,6 +250,7 @@ class IntentParserFallbackTests(unittest.TestCase):
             "Prevent stockouts for the Christmas promotion."
         )
 
+        self.assertEqual(intent["AIAnalysisStatus"], "fallback")
         self.assertEqual(intent["StructuredIntent"]["objective"], "PREVENT_STOCKOUT")
         self.assertEqual(intent["StructuredIntent"]["occasion"], "CHRISTMAS")
 

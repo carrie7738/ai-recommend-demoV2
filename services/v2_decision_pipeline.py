@@ -43,7 +43,13 @@ class V2DecisionPipeline:
             as_of_date,
             parsed_intent=parsed_intent,
         )
-        ai_decision = self.decision_layer.decide(prepared["safe_decision_context"])
+        safe_context = prepared["safe_decision_context"]
+        if safe_context["candidates"]:
+            ai_decision = self.decision_layer.decide(safe_context)
+            decision_mode = "MODEL"
+        else:
+            ai_decision = self._no_purchase_decision(safe_context["structured_intent"])
+            decision_mode = "LOCAL_NO_ELIGIBLE_CANDIDATES"
         safe_candidates = {
             item["candidate_id"]: item
             for item in prepared["safe_decision_context"]["candidates"]
@@ -52,13 +58,14 @@ class V2DecisionPipeline:
             {**item, "features": safe_candidates.get(item["candidate_id"], {}).get("features", {})}
             for item in prepared["candidate_pool"]["eligible_candidates"]
         ]
+        effective_as_of_date = prepared.get("effective_as_of_date", as_of_date)
         optimizer_result = self.optimizer.optimize(
             workbook=workbook,
             customer_id=customer_id,
             structured_intent=prepared["safe_decision_context"]["structured_intent"],
             eligible_candidates=optimizer_candidates,
             ai_decision=ai_decision,
-            as_of_date=prepared.get("effective_as_of_date", as_of_date),
+            as_of_date=effective_as_of_date,
         )
         validation_result = self.validator.validate(
             workbook=workbook,
@@ -66,9 +73,10 @@ class V2DecisionPipeline:
             eligible_candidates=prepared["candidate_pool"]["eligible_candidates"],
             ai_decision=ai_decision,
             optimizer_result=optimizer_result,
+            as_of_date=effective_as_of_date,
         )
         repair_attempts: list[dict[str, Any]] = []
-        if not validation_result["valid"] and not validation_result["requires_model_retry"]:
+        if not validation_result["valid"]:
             repaired = self.validator.repair(
                 workbook,
                 prepared["safe_decision_context"]["structured_intent"],
@@ -87,6 +95,7 @@ class V2DecisionPipeline:
                     eligible_candidates=prepared["candidate_pool"]["eligible_candidates"],
                     ai_decision=ai_decision,
                     optimizer_result=optimizer_result,
+                    as_of_date=effective_as_of_date,
                 )
         decision_attempts = [ai_decision]
         if validation_result["requires_model_retry"]:
@@ -102,7 +111,7 @@ class V2DecisionPipeline:
                 structured_intent=prepared["safe_decision_context"]["structured_intent"],
                 eligible_candidates=optimizer_candidates,
                 ai_decision=ai_decision,
-                as_of_date=prepared.get("effective_as_of_date", as_of_date),
+                as_of_date=effective_as_of_date,
             )
             validation_result = self.validator.validate(
                 workbook=workbook,
@@ -110,8 +119,9 @@ class V2DecisionPipeline:
                 eligible_candidates=prepared["candidate_pool"]["eligible_candidates"],
                 ai_decision=ai_decision,
                 optimizer_result=optimizer_result,
+                as_of_date=effective_as_of_date,
             )
-            if not validation_result["valid"] and not validation_result["requires_model_retry"]:
+            if not validation_result["valid"]:
                 repaired = self.validator.repair(
                     workbook,
                     prepared["safe_decision_context"]["structured_intent"],
@@ -130,6 +140,7 @@ class V2DecisionPipeline:
                         eligible_candidates=prepared["candidate_pool"]["eligible_candidates"],
                         ai_decision=ai_decision,
                         optimizer_result=optimizer_result,
+                        as_of_date=effective_as_of_date,
                     )
         decision_trace = self.trace_builder.build(
             user_request=user_input,
@@ -144,6 +155,8 @@ class V2DecisionPipeline:
             "v2_status": v2_status,
             "fallback_triggered": False,
             "fallback_reason": None,
+            "intent_fallback_triggered": prepared["intent"].get("AIAnalysisStatus") != "live",
+            "decision_mode": decision_mode,
         }
         decision_trace["pipeline_status"] = pipeline_status
         return {
@@ -158,4 +171,21 @@ class V2DecisionPipeline:
             "decision_trace": decision_trace,
             "final_purchase_plan": decision_trace["final_result"]["purchase_plan"],
             **pipeline_status,
+        }
+
+    @staticmethod
+    def _no_purchase_decision(structured_intent: dict[str, Any]) -> dict[str, Any]:
+        """Return a valid local outcome when deterministic filtering leaves no candidates."""
+        return {
+            "procurement_strategy": {
+                "primary_objective": str(
+                    structured_intent.get("objective") or "GENERAL_PLANNING"
+                ).upper(),
+                "primary_signals": [],
+                "secondary_signals": [],
+                "strategy_summary": (
+                    "No eligible products require a purchase decision for this request."
+                ),
+            },
+            "candidate_decisions": [],
         }

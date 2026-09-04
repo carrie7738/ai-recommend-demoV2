@@ -730,12 +730,12 @@ class RecommendationEngineTests(unittest.TestCase):
         self.assertIn("business_goal", missing_fields)
         self.assertIn("demand_driver", missing_fields)
 
-    def test_intent_parser_normalizes_ai_response_safely(self) -> None:
+    def test_intent_parser_accepts_schema_valid_ai_response(self) -> None:
         ai_client = FakeAvailableAIClient(
             {
-                "budget": "500",
+                "budget": 500,
                 "traffic_level": "HIGH",
-                "promotion_flag": "false",
+                "promotion_flag": False,
                 "shelf_life_preference": "LONG",
                 "preferred_category": None,
                 "excluded_category": "Fresh",
@@ -756,10 +756,10 @@ class RecommendationEngineTests(unittest.TestCase):
                     "price_sensitivity": "medium",
                     "growth_appetite": "medium",
                     "budget_strictness": "strict",
-                    "substitution_allowed": "true",
+                    "substitution_allowed": True,
                 },
                 "uncertainty": {
-                    "overall_confidence": "0.82",
+                    "overall_confidence": 0.82,
                     "field_sources": {
                         "budget": "explicit",
                         "traffic_level": "explicit",
@@ -772,14 +772,27 @@ class RecommendationEngineTests(unittest.TestCase):
                 },
                 "missing_information": [],
                 "recommendation_readiness": {
-                    "can_generate_recommendation": "true",
-                    "should_ask_follow_up": "false",
+                    "can_generate_recommendation": True,
+                    "should_ask_follow_up": False,
                     "confidence_level": "high",
-                    "confidence_score": "0.82",
+                    "confidence_score": 0.82,
                     "confidence_drivers": ["Traffic increase is clear."],
                     "confidence_risks": [],
                     "follow_up_question": "",
                 },
+                "structured_intent": {
+                    "store_id": "",
+                    "budget": 500,
+                    "objective": "PREVENT_STOCKOUT",
+                    "traffic_expectation": "HIGH",
+                    "occasion": "NONE",
+                    "category_preference": [],
+                    "hard_constraints": [],
+                    "soft_preferences": [],
+                    "explicit_products": [],
+                },
+                "store_context": {},
+                "store_considerations": [],
             }
         )
 

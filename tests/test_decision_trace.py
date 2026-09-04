@@ -38,7 +38,7 @@ class WhySelectedBuilderTests(unittest.TestCase):
             {"soft_preferences": [{"type": "SHELF_LIFE", "value": "LONG"}]},
         )
 
-        self.assertEqual(without_preference, ["Shelf-life profile is long."])
+        self.assertEqual(without_preference, [])
         self.assertEqual(
             with_preference,
             ["Matches the user's long shelf-life preference."],

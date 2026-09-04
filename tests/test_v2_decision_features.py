@@ -61,6 +61,7 @@ class V2DecisionFeatureTests(unittest.TestCase):
         rows = self.features_for()
         self.assertEqual(rows["P202"]["features"]["purchase_frequency"], "HIGH")
         self.assertEqual(rows["P203"]["features"]["purchase_frequency"], "LOW")
+        self.assertIn("STORE_PURCHASE_HISTORY", rows["P203"]["signals"])
 
     def test_stockout_risk_uses_coverage_not_raw_stock_label(self) -> None:
         rows = self.features_for()
@@ -82,8 +83,18 @@ class V2DecisionFeatureTests(unittest.TestCase):
 
         self.assertEqual(system_rows["P208"]["features"]["peer_purchase_ratio"], "40%")
         self.assertEqual(system_rows["P208"]["candidate_source"], "PEER_SIGNAL")
+        self.assertIn("PEER_POPULARITY=HIGH", system_rows["P208"]["signals"])
         self.assertEqual(requested_rows["P209"]["features"]["peer_purchase_ratio"], "20%")
         self.assertIn("USER_REQUESTED", requested_rows["P209"]["signals"])
+
+    def test_explicit_quantity_intent_reaches_safe_model_signals(self) -> None:
+        rows = self.features_for(intent=self.intent(explicit_products=[{
+            "sku": "P209",
+            "quantity_intent": "HIGH",
+        }]))
+
+        self.assertEqual(rows["P209"]["features"]["quantity_intent"], "HIGH")
+        self.assertIn("USER_QUANTITY_INTENT=HIGH", rows["P209"]["signals"])
 
     def test_event_baseline_fallback_order(self) -> None:
         cases = [

@@ -15,8 +15,8 @@ from tests.test_local_optimizer import workbook as optimizer_workbook
 def validator_workbook() -> dict[str, pd.DataFrame]:
     return {
         "Product": pd.DataFrame([
-            {"ProductId": "P1", "IsSellable": True},
-            {"ProductId": "P2", "IsSellable": True},
+            {"ProductId": "P1", "IsSellable": True, "AvgCost": 2.0},
+            {"ProductId": "P2", "IsSellable": True, "AvgCost": 3.0},
         ]),
         "SupplyAvailability": pd.DataFrame([
             {"ProductId": "P1", "AvailableStock": 20},
@@ -166,15 +166,15 @@ class HardValidatorTests(unittest.TestCase):
 
         self.assertTrue(result["requires_model_retry"])
         self.assertEqual(result["retry_feedback"]["type"], "BUDGET_CONFLICT")
-        self.assertEqual(result["retry_feedback"]["affected_candidates"], ["P1", "P2"])
+        self.assertEqual(result["retry_feedback"]["affected_candidates"], ["P2"])
         serialized = json.dumps(result["retry_feedback"]).casefold()
         for forbidden in ["price", "cost", "difference", "remaining", "severity", "constraint_level"]:
             self.assertNotIn(forbidden, serialized)
 
-    def test_budget_capped_high_intensity_requires_value_tradeoff(self) -> None:
+    def test_partial_budget_cap_is_a_local_optimizer_outcome(self) -> None:
         result = HardValidator().validate(
             validator_workbook(),
-            {"budget": 10.0},
+            {"budget": 12.0},
             self.candidates,
             ai_decision(),
             {
@@ -185,13 +185,30 @@ class HardValidatorTests(unittest.TestCase):
                     "constraint_adjustments": ["BUDGET_CAPPED"],
                 }],
                 "unallocated_candidates": [],
-                "total_cost": 10.0,
+                "total_cost": 12.0,
             },
         )
 
-        self.assertTrue(result["requires_model_retry"])
-        conflict = next(item for item in result["violations"] if item["code"] == "BUDGET_CONFLICT")
-        self.assertEqual(conflict["candidate_ids"], ["P1"])
+        self.assertFalse(result["requires_model_retry"])
+        self.assertTrue(result["valid"])
+
+    def test_budget_is_recomputed_from_product_master_not_optimizer_total(self) -> None:
+        result = HardValidator().validate(
+            validator_workbook(),
+            {"budget": 10.0},
+            self.candidates,
+            ai_decision(),
+            {
+                "purchase_plan": [
+                    {"candidate_id": "P1", "final_qty": 6, "sales_unit": 6},
+                ],
+                "unallocated_candidates": [],
+                "total_cost": 1.0,
+            },
+        )
+
+        self.assertEqual(result["validated_total_cost"], 12.0)
+        self.assertIn("BUDGET_EXCEEDED", {item["code"] for item in result["violations"]})
 
 
 class RetryDecisionTests(unittest.TestCase):

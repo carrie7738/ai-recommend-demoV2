@@ -51,7 +51,7 @@ def _settings_for(provider: str) -> AISettings:
         provider="deepseek",
         api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        model=os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+        model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
         temperature=current.temperature,
         max_tokens=current.max_tokens,
         structured_max_tokens=current.structured_max_tokens,

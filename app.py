@@ -65,7 +65,23 @@ def failed_v2_fallback_status(reason: str) -> dict[str, object]:
         "v2_status": "FAILED",
         "fallback_triggered": True,
         "fallback_reason": str(reason),
+        "intent_fallback_triggered": None,
+        "decision_mode": "V1_FALLBACK",
     }
+
+
+def build_v2_display_context(
+    session_context: dict,
+    parsed_intent: dict | None,
+) -> dict:
+    """Build UI/store context without running the V1 recommendation engine."""
+    context = dict(session_context)
+    if parsed_intent:
+        context.update(parsed_intent)
+        trusted_store = parsed_intent.get("StoreContext") or {}
+        if trusted_store.get("CustomerId"):
+            context["CustomerId"] = str(trusted_store["CustomerId"])
+    return context
 
 
 def resolve_v2_as_of_date(
@@ -182,7 +198,6 @@ def main() -> None:
                 st.rerun()
             return
 
-        engine = get_recommendation_engine()
         session_id = st.session_state["session_id"]
         context_override = st.session_state.get("parsed_intent")
         clear_context_keys = set()
@@ -190,13 +205,10 @@ def main() -> None:
             if context_override.get("Budget") is None:
                 clear_context_keys.add("Budget")
 
-        result = engine.generate_session_recommendations(
-            workbook,
-            session_id,
-            context_override=context_override,
-            clear_context_keys=clear_context_keys,
+        context = build_v2_display_context(
+            context_engine.build_context(workbook, session_id),
+            context_override,
         )
-        context = result["context"]
 
         # 客户信息
         customer_name = settings.default_customer_name
@@ -267,12 +279,17 @@ def main() -> None:
                     for key in (
                         "pipeline_version", "v2_status",
                         "fallback_triggered", "fallback_reason",
+                        "intent_fallback_triggered", "decision_mode",
                     )
                 }
             except (AIDecisionError, ValueError) as exc:
-                logger.warning("V2 pipeline unavailable, retaining V1 result: %s", exc)
+                logger.warning("V2 pipeline failed; V1 fallback will run: %s", exc)
                 st.session_state["v2_error"] = str(exc)
                 st.session_state["pipeline_status"] = failed_v2_fallback_status(str(exc))
+        elif not model_client.is_available and st.session_state.get("v2_result") is None:
+            reason = "AI decision provider is not configured."
+            st.session_state["v2_error"] = reason
+            st.session_state["pipeline_status"] = failed_v2_fallback_status(reason)
 
         v2_result = st.session_state.get("v2_result")
         if v2_result:
@@ -313,9 +330,26 @@ def main() -> None:
                     "V2 FAILED — FALLBACK → V1. "
                     f"Reason: {st.session_state['v2_error']}"
                 )
-            budget = float(context["Budget"]) if context.get("Budget") is not None else None
-            render_procurement_plan_report(result["procurement_plan"], budget, context)
-            render_growth_section(result["growth"])
+            # V1 is deliberately lazy: it is executed only after the original
+            # V2 failure has been captured and surfaced above.
+            fallback_result = get_recommendation_engine().generate_session_recommendations(
+                workbook,
+                session_id,
+                context_override=context_override,
+                clear_context_keys=clear_context_keys,
+            )
+            fallback_context = fallback_result["context"]
+            budget = (
+                float(fallback_context["Budget"])
+                if fallback_context.get("Budget") is not None
+                else None
+            )
+            render_procurement_plan_report(
+                fallback_result["procurement_plan"],
+                budget,
+                fallback_context,
+            )
+            render_growth_section(fallback_result["growth"])
 
     except ExcelLoaderError as exc:
         logger.exception("Failed to load workbook.")
