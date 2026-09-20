@@ -387,15 +387,17 @@ class ProcurementUnderstandingBuilder:
             if not isinstance(item, dict):
                 continue
             constraint_type = str(item.get("type") or "").strip().upper()
-            if constraint_type not in {"CATEGORY", "SHELF_LIFE"}:
+            if constraint_type not in {"CATEGORY", "SHELF_LIFE", "PRODUCT"}:
                 continue
             operator = str(item.get("operator") or "").strip().upper()
             if constraint_type == "CATEGORY" and operator not in {"INCLUDE_ONLY", "EXCLUDE"}:
                 continue
+            if constraint_type == "PRODUCT" and operator != "EXCLUDE":
+                continue
             if constraint_type == "SHELF_LIFE" and operator != "REQUIRE_LEVEL":
                 continue
             entry: dict[str, Any] = {"type": constraint_type, "operator": operator}
-            if constraint_type == "CATEGORY":
+            if constraint_type in {"CATEGORY", "PRODUCT"}:
                 raw_values = item.get("values")
                 if not isinstance(raw_values, list):
                     raw_values = [item.get("value")] if item.get("value") is not None else []

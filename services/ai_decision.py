@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.runtime_trace import observed, record
+
 import json
 from typing import Any
 
@@ -177,12 +179,14 @@ class AIDecisionLayer:
         ]
         return self._request_and_validate(messages, candidates, allowed_strategy_signals)
 
+    @observed("decision_output", "AI")
     def _request_and_validate(
         self,
         messages: list[dict[str, str]],
         candidates: list[dict[str, Any]],
         allowed_strategy_signals: list[str],
     ) -> dict[str, Any]:
+        record("decision_input", "AI", input={"messages": messages, "schema": AI_DECISION_JSON_SCHEMA}, input_contract="PASS")
         try:
             if getattr(self.ai_client, "supports_json_schema", False):
                 result = self.ai_client.chat_completion_json(
@@ -195,6 +199,7 @@ class AIDecisionLayer:
         except AIClientError as exc:
             raise AIDecisionError(f"AI decision request failed: {exc}") from exc
 
+        record("decision_output", "AI", output={"raw_json": result}, operation="before_contract_validation")
         self._validate_schema(result)
         self._validate_semantics(result, candidates, allowed_strategy_signals)
         return result
@@ -226,6 +231,7 @@ class AIDecisionLayer:
             raise AIDecisionError("Retry feedback reason and action must be non-empty strings.")
         cls._reject_forbidden_keys(feedback)
 
+    @observed("decision_input", "Workflow input contract")
     def _validate_input(self, context: Any) -> list[dict[str, Any]]:
         if not isinstance(context, dict):
             raise AIDecisionError("safe_decision_context must be an object.")

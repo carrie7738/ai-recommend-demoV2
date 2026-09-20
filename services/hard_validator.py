@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.runtime_trace import observed, record
+
 import math
 from copy import deepcopy
 from typing import Any
@@ -17,6 +19,7 @@ class HardValidator:
     REQUIRED_SHEETS = {"Product", "SupplyAvailability"}
     REDUCTION_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
+    @observed("validation", "Local Repair")
     def repair(
         self,
         workbook: dict[str, pd.DataFrame],
@@ -44,11 +47,40 @@ class HardValidator:
 
         for item in plan:
             candidate_id = str(item.get("candidate_id") or "")
-            if not candidate_id or candidate_id not in products or candidate_id not in supply:
+            if not candidate_id or candidate_id not in products:
                 continue
-            quantity = int(math.floor(self._number(item.get("final_qty"), "final_qty")))
-            sales_unit_value = self._number(item.get("sales_unit"), "sales_unit")
-            sales_unit = int(sales_unit_value)
+            product = products[candidate_id]
+            sales_unit = self._trusted_sales_unit(product)
+            # Validate the trusted cost even when repair later removes the line.
+            self._trusted_unit_cost(product)
+            if self._metadata_value_differs(item.get("sales_unit"), sales_unit):
+                previous_sales_unit = item.get("sales_unit")
+                item["sales_unit"] = sales_unit
+                item.setdefault("constraint_adjustments", []).append(
+                    "TRUSTED_SALES_UNIT_REPAIR"
+                )
+                actions.append({
+                    "candidate_id": candidate_id,
+                    "type": "SALES_UNIT_METADATA_REPAIR",
+                    "from_sales_unit": previous_sales_unit,
+                    "to_sales_unit": sales_unit,
+                })
+
+            quantity_value = self._number(item.get("final_qty"), "final_qty")
+            quantity = int(math.floor(quantity_value))
+            if quantity_value != quantity:
+                item["final_qty"] = quantity
+                item.setdefault("constraint_adjustments", []).append(
+                    "DETERMINISTIC_INTEGER_QTY_REPAIR"
+                )
+                actions.append({
+                    "candidate_id": candidate_id,
+                    "type": "INTEGER_QTY_REPAIR",
+                    "from_qty": quantity_value,
+                    "to_qty": quantity,
+                })
+            if candidate_id not in supply:
+                continue
             available = self._number(supply[candidate_id].get("AvailableStock", 0), "AvailableStock")
             if quantity <= 0 or sales_unit <= 0:
                 continue
@@ -82,8 +114,10 @@ class HardValidator:
             for item in reduction_candidates:
                 while total > budget_value + 1e-9 and int(item.get("final_qty") or 0) > 0:
                     candidate_id = str(item.get("candidate_id") or "")
+                    if candidate_id not in products:
+                        break
                     quantity = int(item["final_qty"])
-                    sales_unit = int(self._number(item.get("sales_unit"), "sales_unit"))
+                    sales_unit = self._trusted_sales_unit(products[candidate_id])
                     available = self._number(
                         (supply.get(candidate_id) or {}).get("AvailableStock", 0),
                         "AvailableStock",
@@ -106,19 +140,26 @@ class HardValidator:
         retained = []
         metadata_changed = False
         for item in plan:
-            if int(item.get("final_qty") or 0) <= 0:
+            final_qty = self._number(item.get("final_qty"), "final_qty")
+            if final_qty <= 0:
                 unallocated.append({
                     "candidate_id": str(item.get("candidate_id") or ""),
                     "reason": "DETERMINISTIC_REPAIR_NO_EXECUTABLE_QUANTITY",
                 })
                 continue
             candidate_id = str(item.get("candidate_id") or "")
-            product = products.get(candidate_id) or {}
+            product = products.get(candidate_id)
+            if product is None:
+                # Keep invalid candidates visible for the subsequent hard validation.
+                retained.append(item)
+                continue
             unit_cost = self._trusted_unit_cost(product)
+            quantity = int(final_qty)
+            item["final_qty"] = quantity
             if self._metadata_value_differs(item.get("unit_cost"), unit_cost):
                 metadata_changed = True
             item["unit_cost"] = unit_cost
-            estimated_cost = round(int(item["final_qty"]) * unit_cost, 2)
+            estimated_cost = round(quantity * unit_cost, 2)
             if self._metadata_value_differs(item.get("estimated_cost"), estimated_cost):
                 metadata_changed = True
             item["estimated_cost"] = estimated_cost
@@ -140,6 +181,7 @@ class HardValidator:
         repaired["repair_actions"] = actions
         return repaired
 
+    @observed("validation", "Validator")
     def validate(
         self,
         workbook: dict[str, pd.DataFrame],
@@ -166,6 +208,7 @@ class HardValidator:
 
         violations: list[dict[str, Any]] = []
         seen: set[str] = set()
+        cost_metadata_mismatch = False
         for item in plan:
             candidate_id = str(item.get("candidate_id") or "")
             if not candidate_id or candidate_id not in candidate_ids:
@@ -184,26 +227,70 @@ class HardValidator:
                 (supply.get(candidate_id) or {}).get("AvailableStock", 0),
                 "AvailableStock",
             )
-            sales_unit_value = self._number(item.get("sales_unit"), "sales_unit")
-            sales_unit = int(sales_unit_value)
+            sales_unit = self._trusted_sales_unit(product)
+            unit_cost = self._trusted_unit_cost(product)
+            if self._metadata_value_differs(item.get("sales_unit"), sales_unit):
+                violations.append(self._violation("SALES_UNIT_METADATA_MISMATCH", candidate_id))
+            expected_line_cost = round(quantity * unit_cost, 2)
+            if (
+                "unit_cost" in item
+                and self._metadata_value_differs(item.get("unit_cost"), unit_cost)
+            ) or (
+                "estimated_cost" in item
+                and self._metadata_value_differs(item.get("estimated_cost"), expected_line_cost)
+            ):
+                cost_metadata_mismatch = True
             if quantity <= 0:
                 violations.append(self._violation("NON_POSITIVE_QTY", candidate_id))
+            if not quantity.is_integer():
+                violations.append(self._violation("NON_INTEGER_QTY", candidate_id))
             if quantity > available:
                 violations.append(self._violation("AVAILABLE_STOCK_EXCEEDED", candidate_id))
-            tail_exception = available < sales_unit and math.isclose(quantity, math.floor(available))
-            if (
-                sales_unit <= 0
-                or not sales_unit_value.is_integer()
-                or (not tail_exception and quantity % sales_unit != 0)
-            ):
-                violations.append(self._violation("SALES_UNIT_VIOLATION", candidate_id))
+            if quantity.is_integer():
+                tail_exception = available < sales_unit and math.isclose(
+                    quantity,
+                    math.floor(available),
+                )
+                if not tail_exception and quantity % sales_unit != 0:
+                    violations.append(self._violation("SALES_UNIT_VIOLATION", candidate_id))
 
         budget = structured_intent.get("budget")
         validated_total_cost = round(self._product_plan_total(plan, products), 2)
+        if (
+            "total_cost" in optimizer_result
+            and self._metadata_value_differs(
+                optimizer_result.get("total_cost"),
+                validated_total_cost,
+            )
+        ):
+            cost_metadata_mismatch = True
         if budget is not None:
             budget_value = self._number(budget, "budget")
+            expected_remaining_budget = round(
+                max(budget_value - validated_total_cost, 0.0),
+                2,
+            )
+            if (
+                "remaining_budget" in optimizer_result
+                and self._metadata_value_differs(
+                    optimizer_result.get("remaining_budget"),
+                    expected_remaining_budget,
+                )
+            ):
+                cost_metadata_mismatch = True
             if validated_total_cost > budget_value + 1e-9:
                 violations.append(self._violation("BUDGET_EXCEEDED"))
+        elif (
+            "remaining_budget" in optimizer_result
+            and self._metadata_value_differs(
+                optimizer_result.get("remaining_budget"),
+                None,
+            )
+        ):
+            cost_metadata_mismatch = True
+
+        if cost_metadata_mismatch:
+            violations.append(self._violation("COST_METADATA_MISMATCH"))
 
         high_budget_conflicts = self._high_priority_budget_conflicts(
             ai_decision,
@@ -265,6 +352,9 @@ class HardValidator:
             "repairable_locally": code in {
                 "AVAILABLE_STOCK_EXCEEDED",
                 "SALES_UNIT_VIOLATION",
+                "SALES_UNIT_METADATA_MISMATCH",
+                "NON_INTEGER_QTY",
+                "COST_METADATA_MISMATCH",
                 "BUDGET_EXCEEDED",
             },
             "requires_model_retry": False,
@@ -306,15 +396,40 @@ class HardValidator:
         products: dict[str, dict[str, Any]],
     ) -> float:
         """Recompute cost from trusted product master data, independent of optimizer totals."""
-        return sum(
-            int(item.get("final_qty") or 0)
-            * cls._trusted_unit_cost(products.get(str(item.get("candidate_id") or "")) or {})
-            for item in plan
-        )
+        total = 0.0
+        for item in plan:
+            candidate_id = str(item.get("candidate_id") or "")
+            if candidate_id not in products:
+                continue
+            quantity = cls._number(item.get("final_qty"), "final_qty")
+            unit_cost = cls._trusted_unit_cost(products[candidate_id])
+            line_cost = quantity * unit_cost
+            if not math.isfinite(line_cost):
+                raise HardValidationError("validated cost must be finite.")
+            total += line_cost
+        if not math.isfinite(total):
+            raise HardValidationError("validated cost must be finite.")
+        return total
 
     @classmethod
     def _trusted_unit_cost(cls, product: dict[str, Any]) -> float:
-        return cls._number(product.get("AvgCost", 0), "AvgCost")
+        if "AvgCost" not in product:
+            raise HardValidationError("AvgCost is required in Product master data.")
+        value = cls._number(product["AvgCost"], "AvgCost")
+        if value < 0:
+            raise HardValidationError("AvgCost must be non-negative.")
+        return value
+
+    @classmethod
+    def _trusted_sales_unit(cls, product: dict[str, Any]) -> int:
+        if "SalesUnit" not in product:
+            raise HardValidationError("SalesUnit is required in Product master data.")
+        value = cls._number(product["SalesUnit"], "SalesUnit")
+        if value <= 0 or not value.is_integer():
+            raise HardValidationError(
+                "SalesUnit must be a positive integer in Product master data."
+            )
+        return int(value)
 
     @staticmethod
     def _metadata_value_differs(value: Any, expected: float | None) -> bool:

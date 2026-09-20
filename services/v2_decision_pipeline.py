@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.runtime_trace import observed, record, is_capturing
+
 from typing import Any
 
 import pandas as pd
@@ -28,6 +30,7 @@ class V2DecisionPipeline:
         self.validator = validator or HardValidator()
         self.trace_builder = trace_builder or DecisionTraceBuilder()
 
+    @observed("final", "Workflow")
     def run(
         self,
         workbook: dict[str, pd.DataFrame],
@@ -36,6 +39,7 @@ class V2DecisionPipeline:
         as_of_date: Any,
         parsed_intent: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        record("request", "User", input={"user_request": user_input, "customer_id": customer_id, "as_of_date": as_of_date})
         prepared = self.preparation.prepare(
             workbook,
             customer_id,
@@ -50,6 +54,8 @@ class V2DecisionPipeline:
         else:
             ai_decision = self._no_purchase_decision(safe_context["structured_intent"])
             decision_mode = "LOCAL_NO_ELIGIBLE_CANDIDATES"
+            record("decision_input", "AI", status="skipped", reason=decision_mode)
+            record("decision_output", "Workflow", output=ai_decision)
         safe_candidates = {
             item["candidate_id"]: item
             for item in prepared["safe_decision_context"]["candidates"]
@@ -161,6 +167,27 @@ class V2DecisionPipeline:
             "decision_mode": decision_mode,
         }
         decision_trace["pipeline_status"] = pipeline_status
+        if is_capturing():
+            final_ids = {item["candidate_id"] for item in decision_trace["final_result"]["purchase_plan"]}
+            unallocated = {item["candidate_id"]: item.get("reason") for item in optimizer_result["unallocated_candidates"]}
+            outcomes = [
+                {"candidate_id": item["candidate_id"], "outcome": "RULE_REJECTED", "reason": item.get("rejection_code")}
+                for item in prepared["candidate_pool"]["rejected_candidates"]
+            ]
+            for item in ai_decision["candidate_decisions"]:
+                candidate_id = item["candidate_id"]
+                if not item["recommended"]:
+                    outcome, reason = "AI_NOT_SELECTED", item.get("decision_signals", [])
+                elif candidate_id in final_ids:
+                    outcome, reason = "PURCHASED", None
+                elif candidate_id in unallocated:
+                    outcome, reason = "OPTIMIZER_UNALLOCATED", unallocated[candidate_id]
+                elif not validation_result["valid"]:
+                    outcome, reason = "VALIDATION_BLOCKED", validation_result.get("violations", [])
+                else:
+                    outcome, reason = "NOT_IN_FINAL_PLAN", "See repair actions; no allocation reason recorded."
+                outcomes.append({"candidate_id": candidate_id, "outcome": outcome, "reason": reason})
+            record("final", "Workflow", output={"candidate_outcomes": outcomes}, operation="candidate_outcomes")
         return {
             **prepared,
             "ai_decision": ai_decision,

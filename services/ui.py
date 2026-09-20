@@ -1195,17 +1195,18 @@ def _plan_markup(plan: list[dict[str, Any]], total: Any, remaining: Any, budget:
                ("Remaining", _display_value(remaining, True)), ("Products", str(len(plan)))]
     summary = ''.join(f'<div class="procurement-summary-metric"><div class="metric-label">{label}</div><div class="metric-value">{value}</div></div>' for label, value in metrics)
     rows = ''.join('<tr>' + ''.join(f'<td>{value}</td>' for value in [
+        _display_value(item.get("candidate_id")),
         _display_value(item.get("product_name") or item.get("candidate_id")),
         _display_value(item.get("final_qty")), _display_value(item.get("unit")),
         _display_value(item.get("unit_cost"), True), _display_value(item.get("priority")),
         _display_value(item.get("estimated_cost"), True), _inline_reasons(item)]) + '</tr>' for item in plan)
     if not rows:
-        rows = '<tr><td colspan="7">No executable purchase quantities.</td></tr>'
+        rows = '<tr><td colspan="8">No executable purchase quantities.</td></tr>'
     return ('<section class="purchase-plan"><h2>Purchase Plan</h2>'
             + ('<p class="validation-note">Validated</p>' if validated else '<p>Rules-based fallback · Validation result unavailable</p>')
             + '<div class="procurement-summary-grid">' + summary + '</div>'
             + '<div class="table-scroll" role="region" aria-label="Purchase products" tabindex="0"><table class="procurement-table">'
-            + '<thead><tr><th>Product</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Priority</th><th>Budget Used</th><th>Why Selected</th></tr></thead><tbody>'
+            + '<thead><tr><th>Product Code</th><th>Product</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Priority</th><th>Budget Used</th><th>Why Selected</th></tr></thead><tbody>'
             + rows + '</tbody></table></div>'
             + '</section>')
 
@@ -1217,6 +1218,10 @@ def render_v2_purchase_plan(plan: list[dict[str, Any]], optimizer_result: dict[s
         st.error("No final purchase plan is available. Validation failed or its result is missing. " + f"Details: {codes}.")
         return
     st.markdown(_plan_markup(plan, optimizer_result.get("total_cost"), optimizer_result.get("remaining_budget"), budget, True), unsafe_allow_html=True)
+    unavailable = [str(item.get('candidate_id')) for item in optimizer_result.get('unallocated_candidates', [])
+                   if item.get('reason') == 'INVENTORY_UNAVAILABLE']
+    if unavailable:
+        st.warning('Inventory is missing or invalid for ' + ', '.join(unavailable) + '. These products were not purchased; verify their inventory before retrying.')
 
 
 def render_unvalidated_fallback_plan(plan: list[dict[str, Any]], budget: float | None) -> None:

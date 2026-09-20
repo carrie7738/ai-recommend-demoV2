@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.runtime_trace import observed, record
+
 import logging
 import json
 import re
@@ -9,6 +11,7 @@ from jsonschema import Draft202012Validator
 
 from services.ai_client import AIClient, AIClientError
 from services.procurement_understanding import ProcurementUnderstandingBuilder
+from services.request_constraints import fallback_budget, product_is_excluded
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +184,16 @@ INTENT_JSON_SCHEMA: dict[str, Any] = {
                                     "value": {"enum": ["LONG", "MEDIUM", "SHORT"]},
                                 },
                             },
+                            {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["type", "operator", "values"],
+                                "properties": {
+                                    "type": {"const": "PRODUCT"},
+                                    "operator": {"const": "EXCLUDE"},
+                                    "values": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                                },
+                            },
                         ]
                     },
                 },
@@ -309,6 +322,7 @@ Rules:
 - "prefer" and "focus on" are soft preferences. They must not become filters.
 - Use hard constraints only for explicit wording such as "only", "must", "do not accept", or "no other categories".
 - A user-requested product is strong evidence. Put it in explicit_products even when peer evidence may be low.
+- Never treat a negated product mention as a purchase request. Put explicitly excluded SKUs or product names in a PRODUCT / EXCLUDE hard constraint with values; do not put them in explicit_products.
 - High-risk missing information should set should_ask_follow_up=true but can_generate_recommendation must remain true.
 - If the request is vague and lacks business goal, demand driver, category and budget, use this exact follow-up question: "Are you optimizing for stockout prevention, budget control, or growth?"
 - Otherwise, set should_ask_follow_up to false and continue recommendations.
@@ -330,12 +344,14 @@ class IntentParser:
         self.ai_client = ai_client or AIClient()
         self.understanding_builder = understanding_builder or ProcurementUnderstandingBuilder()
 
+    @observed("intent_output", "AI / Workflow")
     def parse_intent(
         self,
         user_input: str,
         store_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.ai_client.is_available:
+            record("intent_input", "AI", status="skipped", reason="Provider not configured")
             logger.info("AI not available, using fallback parsing.")
             return self._with_store_context(
                 self._with_analysis_source(self._fallback_parse(user_input), "fallback"),
@@ -371,6 +387,7 @@ class IntentParser:
             },
         ]
 
+        record("intent_input", "AI", input={"messages": messages, "schema": INTENT_JSON_SCHEMA})
         try:
             if getattr(self.ai_client, "supports_json_schema", False):
                 result = self.ai_client.chat_completion_json(
@@ -382,6 +399,7 @@ class IntentParser:
                 result = self.ai_client.chat_completion_json(messages)
             # Provider capabilities only control the wire format.  The local
             # business contract must be identical for every configured model.
+            record("intent_output", "AI", output={"raw_json": result}, operation="before_contract_validation")
             self._validate_structured_output(result)
             return self._with_store_context(
                 self._with_analysis_source(
@@ -393,6 +411,7 @@ class IntentParser:
                 result.get("store_considerations"),
             )
         except (AIClientError, IntentContractError) as exc:
+            record("intent_output", "Workflow", status="fallback", error=str(exc))
             logger.warning("Intent parsing failed, using fallback: %s", exc)
             return self._with_store_context(
                 self._with_analysis_source(self._fallback_parse(user_input), "fallback"),
@@ -455,15 +474,11 @@ class IntentParser:
     def _fallback_parse(self, user_input: str) -> dict[str, Any]:
         """Simple keyword-based fallback when AI is unavailable."""
         lower = user_input.lower()
+        for chinese, english in {'水果': 'fruit', '蔬菜': 'vegetable', '乳制品': 'dairy', '冷冻': 'frozen', '干货': 'dry', '生鲜': 'fresh'}.items():
+            lower = lower.replace(chinese, english)
         intent = self._empty_intent()
 
-        if any(w in lower for w in ["budget", "nzd", "nz$", "$", "dollar"]):
-            match = re.search(
-                r'(?:budget(?:\s+is)?\s*(?:of\s*)?(?:nzd|nz\$|\$)?|nzd|nz\$|\$)\s*(\d+(?:\.\d+)?)',
-                lower,
-            )
-            if match:
-                intent["Budget"] = float(match.group(1))
+        intent["Budget"] = fallback_budget(user_input)
 
         if any(w in lower for w in ["traffic", "busy", "rush", "crowd"]):
             intent["TrafficLevel"] = "HIGH"
@@ -485,7 +500,7 @@ class IntentParser:
         if any(w in lower for w in ["short shelf", "perishable", "avoid fresh", "no fresh", "long shelf"]):
             intent["ShelfLifePreference"] = "LONG"
 
-        exclude_patterns = ["avoid ", "exclude ", "no "]
+        exclude_patterns = ["avoid ", "exclude ", "no ", "不要", "不采购", "排除"]
         for cat in ["fruit", "vegetable", "dairy", "frozen", "dry", "fresh"]:
             for pattern in exclude_patterns:
                 if f"{pattern}{cat}" in lower:
@@ -535,7 +550,11 @@ class IntentParser:
         explicit_products = [
             {"sku": sku.upper(), "product_name": "", "quantity_intent": "NORMAL"}
             for sku in dict.fromkeys(re.findall(r"\bP\d{3}\b", user_input, flags=re.IGNORECASE))
+            if not product_is_excluded(user_input, sku)
         ]
+        excluded = [sku.upper() for sku in dict.fromkeys(re.findall(r'\bP\d{3}\b', user_input, flags=re.IGNORECASE)) if product_is_excluded(user_input, sku)]
+        if excluded:
+            hard_constraints.append({'type': 'PRODUCT', 'operator': 'EXCLUDE', 'values': excluded})
         intent["HardConstraints"] = hard_constraints
         intent["SoftPreferences"] = soft_preferences
         intent["ExplicitProducts"] = explicit_products

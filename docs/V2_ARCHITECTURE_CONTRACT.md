@@ -80,6 +80,20 @@ Demand Baseline
 - User-requested discovery requires eligibility but no minimum peer evidence.
 - `prefer` and `focus on` are soft preferences. Only explicit `must`, `only`, or equivalent wording
   creates a hard constraint.
+- Explicit product exclusions use `{"type":"PRODUCT","operator":"EXCLUDE","values":["SKU or exact product name"]}`.
+  Negated catalog mentions must not become USER_REQUESTED candidates. Product exclusions and
+  category/shelf-life hard constraints also filter the rules fallback before allocation.
+- Missing, invalid, negative, or non-finite store inventory is unknown, not zero. The optimizer
+  skips that candidate with `INVENTORY_UNAVAILABLE`; the UI must disclose this omission. A verified
+  zero stock remains a valid replenishment input.
+- The validator and local repair read SalesUnit from Product, never from optimizer metadata.
+- Supplied cost metadata (unit/line/total cost and remaining budget) must match trusted
+  recomputation, even when no budget limit is set. Mismatches trigger local repair and revalidation.
+- A stated budget that the local parser cannot safely interpret requires clarification; it must
+  not silently become an unlimited budget. Local parsing supports numeric NZD amounts including
+  thousands separators and basic Chinese budget/category expressions, not arbitrary language.
+  Every stated budget marker must be parsed; conflicting limited/unlimited declarations or a
+  partially unparsed second declaration require clarification. Repeated equal amounts are valid.
 - Event baseline order is Store Event → Peer Event → Recent Store.
 - Why Selected uses verified supporting evidence. Low, unknown, or neutral facts remain audit context
   and are not presented as positive selection reasons.
@@ -105,3 +119,7 @@ Regression and A/B runs must bind each presentation scenario to an explicit `V2T
 record `ScenarioId`, `CustomerId`, `AsOfDate`, and `DecisionPath`. A scenario passes only when both hard
 constraints and its intended behavioral effect pass. A successful V1 fallback never converts an
 original V2 failure into a V2 pass.
+
+The September 8 correctness changes extend the intent contract and prompt. Earlier live acceptance
+is historical evidence only; rerun live acceptance before claiming the updated contract is verified
+against a real provider.

@@ -12,6 +12,8 @@ from engines.risk_engine import RiskEngine
 from engines.scoring_utils import HIGH_STRENGTH_SCORE
 from services.context_engine import ContextEngine
 from services.store_resolver import StoreResolver
+from services.candidate_pool import CandidatePoolBuilder
+from services.request_constraints import catalog_exclusions
 
 
 class InsufficientDataError(Exception):
@@ -84,6 +86,20 @@ class RecommendationEngine:
         growth = self.price_trend_engine.enrich_recommendations(growth, workbook)
         growth = self._apply_store_adjustments(growth, trusted_store_context)
         risks = self.risk_engine.generate_risks(workbook, customer_id)
+        # A rules fallback must not reverse explicit exclusions or include-only constraints.
+        constraints = list((context.get('StructuredIntent') or {}).get('hard_constraints', []))
+        request = (context_override or {}).get('UserInput') or (context_override or {}).get('ExpectedIntent') or ''
+        excluded = catalog_exclusions(str(request), workbook['Product'])
+        if excluded:
+            constraints.append({'type': 'PRODUCT', 'operator': 'EXCLUDE', 'values': excluded})
+        if constraints:
+            products = {str(row['ProductId']): row.to_dict() for _, row in workbook['Product'].iterrows()}
+            def allowed(item):
+                product = products.get(str(item.get('product_id')))
+                return product is not None and CandidatePoolBuilder._passes_hard_constraints(product, constraints)
+            replenishment = list(filter(allowed, replenishment))
+            replenishment_candidates = list(filter(allowed, replenishment_candidates))
+            growth = list(filter(allowed, growth))
         procurement_plan, remaining_budget = self._build_procurement_plan(
             replenishment=replenishment,
             growth=growth,

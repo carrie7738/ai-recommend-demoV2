@@ -66,7 +66,7 @@ class ContextEngine:
 
         if parsed_intent is None:
             parsed_intent = self.intent_parser.parse_intent(user_input)
-        logger.info("Parsed intent for session matching: %s", parsed_intent)
+        logger.info("Matching parsed procurement intent to a demo session.")
 
         best_session_id = sessions[0]["SessionId"]
         best_score = -1.0

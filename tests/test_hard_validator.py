@@ -15,8 +15,8 @@ from tests.test_local_optimizer import workbook as optimizer_workbook
 def validator_workbook() -> dict[str, pd.DataFrame]:
     return {
         "Product": pd.DataFrame([
-            {"ProductId": "P1", "IsSellable": True, "AvgCost": 2.0},
-            {"ProductId": "P2", "IsSellable": True, "AvgCost": 3.0},
+            {"ProductId": "P1", "IsSellable": True, "AvgCost": 2.0, "SalesUnit": 6},
+            {"ProductId": "P2", "IsSellable": True, "AvgCost": 3.0, "SalesUnit": 6},
         ]),
         "SupplyAvailability": pd.DataFrame([
             {"ProductId": "P1", "AvailableStock": 20},
@@ -95,7 +95,12 @@ class HardValidatorTests(unittest.TestCase):
         codes = {item["code"] for item in result["violations"]}
         self.assertEqual(
             codes,
-            {"AVAILABLE_STOCK_EXCEEDED", "SALES_UNIT_VIOLATION", "BUDGET_EXCEEDED"},
+            {
+                "AVAILABLE_STOCK_EXCEEDED",
+                "SALES_UNIT_VIOLATION",
+                "COST_METADATA_MISMATCH",
+                "BUDGET_EXCEEDED",
+            },
         )
         self.assertFalse(result["requires_model_retry"])
         self.assertEqual(result["status"], "FAIL")

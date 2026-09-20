@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -6,11 +7,34 @@ from app import (
     build_v2_display_context,
     failed_v2_fallback_status,
     resolve_v2_as_of_date,
+    resolve_v2_date_context,
     should_render_recommendations,
 )
 
 
 class AppStateTests(unittest.TestCase):
+    def test_date_source_tracks_the_actual_resolution_branch(self):
+        past = pd.Timestamp.today().normalize() - pd.Timedelta(days=10)
+        future = pd.Timestamp.today().normalize() + pd.Timedelta(days=10)
+        workbook = {
+            "V2TestScenarios": pd.DataFrame([{
+                "CustomerId": "C1", "UserInput": "request", "AsOfDate": past,
+            }]),
+            "SupplyAvailability": pd.DataFrame([{"LastUpdated": future}]),
+        }
+        date, source = resolve_v2_date_context(workbook, "request", "C1")
+        self.assertEqual((date, source), (past, "V2TestScenarios.AsOfDate"))
+        with patch('app.EventNormalizer.normalize', return_value={"event_window_start": future}):
+            self.assertEqual(resolve_v2_date_context(workbook, "other", "C1"),
+                             (future, "EventConfig.EventWindowStart"))
+        with patch('app.EventNormalizer.normalize', return_value=None):
+            self.assertEqual(resolve_v2_date_context(workbook, "other", "C1"),
+                             (future, "SupplyAvailability.LastUpdated.earliest_future"))
+            workbook["SupplyAvailability"] = pd.DataFrame([{"LastUpdated": past}, {"LastUpdated": future}])
+            self.assertEqual(resolve_v2_date_context(workbook, "other", "C1"),
+                             (past, "SupplyAvailability.LastUpdated.latest_not_future"))
+            self.assertEqual(resolve_v2_date_context({}, "other", "C1")[1], "System.today")
+
     def test_v1_fallback_status_preserves_original_v2_failure(self) -> None:
         status = failed_v2_fallback_status("AI decision schema violation")
 

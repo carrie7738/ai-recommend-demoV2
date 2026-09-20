@@ -186,6 +186,11 @@ class CandidatePoolBuilder:
             kind = str(constraint.get("type") or "").upper()
             operator = str(constraint.get("operator") or "").upper()
             values = {str(value).strip().casefold() for value in constraint.get("values", [])}
+            if kind == "PRODUCT" and operator == "EXCLUDE" and (
+                str(product.get('ProductId') or '').strip().casefold() in values
+                or str(product.get('ProductName') or '').strip().casefold() in values
+            ):
+                return False
             if kind == "CATEGORY" and operator == "INCLUDE_ONLY" and category not in values:
                 return False
             if kind == "CATEGORY" and operator == "EXCLUDE" and category in values:
