@@ -1,8 +1,10 @@
 """Offline presentation checks; fixture plans do not represent model acceptance."""
 import json
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 from services.intent_parser import IntentParser
@@ -12,6 +14,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ProcurementPageTests(unittest.TestCase):
+    def test_header_identifies_demo_mode_and_business_date(self):
+        from services.ui import render_header
+
+        with patch("services.ui.st.markdown") as markdown:
+            render_header(
+                "Cafe Store 001",
+                "Cafe",
+                business_date="2026-06-02",
+                date_source="SupplyAvailability.LastUpdated.latest_not_future",
+                run_time=datetime(2026, 9, 20, 17, 43),
+            )
+
+        html = markdown.call_args.args[0]
+        self.assertIn("DEMO MODE", html)
+        self.assertIn("Business Data Date", html)
+        self.assertIn("June 02, 2026", html)
+        self.assertIn("Supply snapshot", html)
+        self.assertIn("Run Sep 20, 2026 17:43 local", html)
+        self.assertNotIn("Analysis Time", html)
+
+    def test_landing_header_marks_date_as_pending(self):
+        from services.ui import render_header
+
+        with patch("services.ui.st.markdown") as markdown:
+            render_header(show_context=False, run_time=datetime(2026, 9, 20, 17, 43))
+
+        html = markdown.call_args.args[0]
+        self.assertIn("DEMO MODE", html)
+        self.assertIn("Selected after request", html)
+        self.assertIn("Workbook-backed demo data", html)
+
     def test_inline_reason_tags_require_matching_structured_evidence(self):
         from services.ui import _inline_reasons, _plan_markup
         reasons = ['Frequently purchased by this store.', 'Existing reason <two>', 'Remaining reason']

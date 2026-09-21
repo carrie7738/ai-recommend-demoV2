@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from html import escape
 from typing import Any
 
@@ -58,8 +59,27 @@ def inject_theme() -> None:
         .app-header-left h1 {
             font-size: 1.25rem;
             font-weight: 700;
-            margin: 0 0 0.3rem;
+            margin: 0;
             color: #1a1a2e;
+        }
+
+        .app-title-row {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 0.35rem;
+        }
+
+        .demo-mode-badge {
+            padding: 0.2rem 0.5rem;
+            border: 1px solid #f59e0b;
+            border-radius: 999px;
+            background: #fffbeb;
+            color: #92400e;
+            font-size: 0.66rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
         }
 
         .app-header-meta {
@@ -100,6 +120,11 @@ def inject_theme() -> None:
         .app-header-right .analysis-time {
             font-weight: 600;
             color: #1a1a2e;
+        }
+
+        .app-header-right .analysis-source {
+            margin-top: 0.2rem;
+            color: #6c757d;
         }
 
         /* Section card */
@@ -925,7 +950,8 @@ def inject_theme() -> None:
         @media (max-width: 640px) {
             .block-container { padding: 1rem; }
             .app-header { flex-direction: column; align-items: flex-start; gap: .5rem; }
-            .app-header-right { display: none; }
+            .app-header-right { text-align: left; }
+            .app-header-right .analysis-label { justify-content: flex-start; }
             .procurement-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .intent-fields { gap: 1rem; }
             .metric-value { font-size: 1.05rem; overflow-wrap: anywhere; }
@@ -940,14 +966,21 @@ def render_header(
     customer_name: str | None = None,
     industry: str = "Retail - Grocery",
     show_context: bool = True,
+    business_date: Any | None = None,
+    date_source: str | None = None,
+    run_time: datetime | None = None,
 ) -> None:
     if customer_name is None and show_context:
         customer_name = get_settings().default_customer_name
-    from datetime import datetime
-
-    now = datetime.now()
+    now = run_time or datetime.now()
     context_html = ""
-    analysis_html = ""
+    source_labels = {
+        "V2TestScenarios.AsOfDate": "Scenario date",
+        "EventConfig.EventWindowStart": "Event window",
+        "SupplyAvailability.LastUpdated.latest_not_future": "Supply snapshot",
+        "SupplyAvailability.LastUpdated.earliest_future": "Earliest supply snapshot",
+        "System.today": "System date fallback",
+    }
     if show_context:
         context_html = (
             '<div class="app-header-meta">'
@@ -956,16 +989,31 @@ def render_header(
             f'<span> {escape(industry)}</span>'
             '</div>'
         )
+    if business_date is not None:
+        formatted_date = pd.Timestamp(business_date).strftime("%B %d, %Y")
+        source_label = source_labels.get(date_source or "", date_source or "Unspecified source")
         analysis_html = (
             '<div class="app-header-right">'
-            '<div class="analysis-label">📋 Analysis Time</div>'
-            f'<div class="analysis-time">{now.strftime("%B %d, %Y")} · {now.strftime("%H:%M")}</div>'
+            '<div class="analysis-label">🗓 Business Data Date</div>'
+            f'<div class="analysis-time">{escape(formatted_date)}</div>'
+            f'<div class="analysis-source">{escape(source_label)} · Run {now.strftime("%b %d, %Y %H:%M")} local</div>'
+            '</div>'
+        )
+    else:
+        analysis_html = (
+            '<div class="app-header-right">'
+            '<div class="analysis-label">🗓 Business Data Date</div>'
+            '<div class="analysis-time">Selected after request</div>'
+            '<div class="analysis-source">Workbook-backed demo data</div>'
             '</div>'
         )
     html = (
         '<div class="app-header">'
         '<div class="app-header-left">'
-        f'<h1>AI Smart Procurement Assistant</h1>'
+        '<div class="app-title-row">'
+        '<h1>AI Smart Procurement Assistant</h1>'
+        '<span class="demo-mode-badge">DEMO MODE</span>'
+        '</div>'
         f'{context_html}'
         '</div>'
         f'{analysis_html}'

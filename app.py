@@ -379,7 +379,23 @@ def main() -> None:
             if not row.empty:
                 industry = str(row.iloc[0].get("Industry", industry))
 
-        render_header(customer_name, industry)
+        user_request = str(st.session_state.get("user_request") or context.get("UserInput") or "")
+        customer_id = str(context.get("CustomerId") or "")
+        as_of_date, as_of_date_source = resolve_v2_date_context(
+            workbook, user_request, customer_id, context_override,
+        )
+        v2_result = st.session_state.get("v2_result")
+        business_date = (
+            v2_result.get("effective_as_of_date", as_of_date)
+            if isinstance(v2_result, dict)
+            else as_of_date
+        )
+        render_header(
+            customer_name,
+            industry,
+            business_date=business_date,
+            date_source=as_of_date_source,
+        )
         request, request_submitted = render_ai_request_section()
         if request_submitted:
             # Clear before resolving/parsing so a failed new request cannot
@@ -428,16 +444,12 @@ def main() -> None:
                     preparation=V2PreparationPipeline(intent_parser=intent_parser),
                     decision_layer=AIDecisionLayer(ai_client=model_client),
                 )
-                user_request = str(st.session_state.get("user_request") or context.get("UserInput") or "")
-                as_of_date, as_of_date_source = resolve_v2_date_context(
-                    workbook, user_request, str(context["CustomerId"]), context_override,
-                )
                 with st.spinner("Building purchase plan..."):
                     pipeline_result, _ = _run_pipeline_with_trace(
                         v2_pipeline,
                         st.session_state.get("debug_trace"),
                         workbook=workbook,
-                        customer_id=str(context["CustomerId"]),
+                        customer_id=customer_id,
                         user_input=user_request,
                         as_of_date=as_of_date,
                         as_of_date_source=as_of_date_source,

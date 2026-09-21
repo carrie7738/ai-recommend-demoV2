@@ -345,7 +345,7 @@ def _render_candidate_pool_summary(events: list[dict[str, Any]]) -> None:
             break
     if rows:
         st.markdown("**候选池摘要**")
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def _candidate_row(candidate: dict[str, Any], eligible: bool) -> dict[str, Any]:
@@ -393,7 +393,7 @@ def _render_features_summary(events: list[dict[str, Any]]) -> None:
         })
     if rows:
         st.markdown("**特征摘要**")
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def _decision_payload(events: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -422,7 +422,7 @@ def _render_decision_summary(events: list[dict[str, Any]]) -> None:
             })
     if rows:
         st.markdown("**AI 决策摘要**")
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def _optimizer_payload(events: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -474,7 +474,7 @@ def _render_optimizer_summary(events: list[dict[str, Any]]) -> None:
         f"剩余预算：{_display_number(payload.get('remaining_budget'))}"
     )
     if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     elif isinstance(payload.get("purchase_plan"), list):
         st.caption("优化器未产生可执行采购数量。")
 
@@ -499,7 +499,7 @@ def _render_validation_summary(events: list[dict[str, Any]]) -> None:
             }
             for item in violations
         ]
-        st.dataframe(pd.DataFrame(violation_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(violation_rows), width="stretch", hide_index=True)
 
 
 def _final_payload(
@@ -573,7 +573,7 @@ def _render_final_step(
     rows = _plan_rows(plan)
     if rows:
         st.markdown("**最终采购计划摘要**")
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     else:
         st.info(_no_purchase_message(payload, outcome_codes))
 
@@ -607,7 +607,7 @@ def _render_candidate_outcomes(events: list[dict[str, Any]]) -> list[str]:
                 })
     if rows:
         st.markdown("**候选去向**")
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     return outcome_codes
 
 

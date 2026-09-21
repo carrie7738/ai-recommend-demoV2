@@ -4,6 +4,8 @@
 
 V2 为主流程；V2 失败时可能进入带有明确标识的 V1 规则降级。降级结果不等同于通过 V2 校验的计划。本项目用于演示与评估，不直接生成真实采购订单。
 
+页面固定标记为 **DEMO MODE**。页头的 **Business Data Date** 是本次采购计算实际使用的业务日期，可能来自场景日期、活动窗口或供应快照；旁边的 `Run ... local` 仅表示本地页面运行时间。两者不应混用，也不代表真实订单日期。
+
 ## 项目入口
 
 本机 Git 仓库在 `D:\carrie\recommend-demo\ai-recommend-demo`。父目录 `D:\carrie\recommend-demo` 另有同名代码，启动、测试和修改均应在本仓库执行。其他机器使用实际克隆目录。
@@ -16,6 +18,7 @@ V2 为主流程；V2 失败时可能进入带有明确标识的 V1 规则降级�
 | [Debug / Trace 使用说明](docs/V2_DEBUG_TRACE.md) | 本地调试、证据查看与导出 |
 | [V2 历史验收报告](docs/V2_ACCEPTANCE_REPORT.md) | 2026-09-04 指定版本的验收证据，不代表当前版本 |
 | [正确性修复收尾记录](docs/CORRECTNESS_CLOSEOUT_2026-09-20.md) | 本轮修复分组、离线验证与后续边界 |
+| [2026-09-20 端到端验收记录](docs/E2E_ACCEPTANCE_2026-09-20.md) | 当前基线的真实模型、六场景与浏览器验收证据 |
 | [V3 PRD](docs/AI_Smart_Procurement_Assistant_PRD_V3.docx) | 产品需求背景；实现边界以当前架构合同核对 |
 | [V1 规范](docs/Recommendation_Engine_Specification_V1.docx)、[旧客户指南](CUSTOMER_DEMO_GUIDE.md) | 历史参考，不作为 V2 操作指南 |
 
@@ -134,6 +137,8 @@ Smoke 检查结构化调用；场景脚本检查绑定的演示场景，读取�
 - 基础数据：`Customer`、`Product`、`OrderHistory`、`Inventory`、`Favorites`、`ConversationContext`。
 - 业务信号：`IndustryTrend`、`HolidayConfig`、`HolidayProduct`、`PriceHistory`。
 - V2 数据与配置：`SupplyAvailability`、`EventConfig`、`V2FeaturePolicy`、`V2TestScenarios`；具体字段和用途见架构合同。
+- UI 演示门店 C001 已覆盖 P201-P215 的 V2 库存，可从自然语言门店解析进入真实模型、Optimizer 和 Validator 主链路。
+- 六场景审计仍使用 `V2TestScenarios` 绑定的 C051 身份；C051 保留为脚本化回归基线，不应改写为 UI 门店。
 
 门店、供应数据及预置场景的覆盖范围不同，不能把工作簿全部记录都视为已支持业务范围。场景日期可能取自演示映射、供应快照或活动窗口，应核对结果的业务日期，不能默认它就是今天。
 
@@ -163,11 +168,11 @@ sudo cp deploy/procurement-demo.service /etc/systemd/system/procurement-demo.ser
 sudo nano /etc/systemd/system/procurement-demo.service
 ```
 
-[现有模板](deploy/procurement-demo.service) 含内联环境变量及 `0.0.0.0` 监听，复制后需编辑：
+[服务模板](deploy/procurement-demo.service) 默认从 `/etc/procurement-demo.env` 读取配置，并只监听 `127.0.0.1`：
 
 - 核对 `User`、`WorkingDirectory` 和 `ExecStart` 的实际路径。
-- 删除模板中的全部 `Environment=` 行，统一使用 `EnvironmentFile=/etc/procurement-demo.env`，避免占位密钥或旧模型覆盖配置。
-- 在 `ExecStart` 中把 `--server.address 0.0.0.0` 改为 `--server.address 127.0.0.1`，由 Nginx 代理访问。
+- 若更改环境文件路径，同步修改 `EnvironmentFile=`；不要把密钥写进 service 文件。
+- 保持 Streamlit 监听回环地址，由 Nginx 代理访问，避免直接暴露 8501 端口。
 
 ```bash
 if ! sudo test -e /etc/procurement-demo.env; then
